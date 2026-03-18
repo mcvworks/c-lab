@@ -1,10 +1,11 @@
 ---
-task_id: "020"
-title: MVP Cleanup and Launch Readiness Pass
-status: queued
 priority: 19
 requires_approval: false
+status: done
+task_id: '020'
+title: MVP Cleanup and Launch Readiness Pass
 ---
+
 
 ## Objective
 Do a final MVP cleanup pass without adding major new features.
@@ -21,10 +22,10 @@ Do a final MVP cleanup pass without adding major new features.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Cleaner MVP codebase
-- [ ] Launch-readiness summary created
-- [ ] Clear next-step recommendations documented
-- [ ] All handoff docs present and coherent
-- [ ] No dead code or placeholder junk remaining
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Cleaner MVP codebase
+- [x] Launch-readiness summary created
+- [x] Clear next-step recommendations documented
+- [x] All handoff docs present and coherent
+- [x] No dead code or placeholder junk remaining
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

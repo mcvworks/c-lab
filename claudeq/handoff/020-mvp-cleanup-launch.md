@@ -1,0 +1,23 @@
+# Handoff
+
+- Task: 020 — MVP Cleanup and Launch Readiness Pass
+- Status: Done
+- Summary: Final pre-development cleanup and documentation pass. No application code existed to clean up — tasks 001-019 are all still queued. This task produced the launch readiness summary, improved the README, created handoff documentation, and committed/pushed the project state.
+- Files Changed:
+  - `README.md` — replaced placeholder content with full project overview, stack table, feature status, architecture diagram, and non-goals
+  - `docs/launch-readiness.md` — created; contains execution plan, known limitations, architecture guidance, quality checklist, and post-MVP roadmap
+  - `claudeq/handoff/020-mvp-cleanup-launch.md` — this file
+  - `handoffs/task-20-handoff.md` — CLAUDE.md-format handoff
+  - `claudeq/done/020-mvp-cleanup-launch.md` — task moved to done
+- Commands Run:
+  - `git add`, `git commit`, `git push`
+- Testing:
+  - No application code exists to test. Verified all documentation is accurate and consistent with CLAUDE.md spec.
+- Blockers:
+  - None. All 19 implementation tasks are well-defined and ready to execute.
+- Next Recommended Task: 001 — Initialize Project Foundation (this is the blocker for all subsequent work)
+- Notes:
+  - The repository is in a clean pre-development state. Task queue is intact with 19 well-scoped tasks.
+  - Audio package selection (Expo AV vs alternatives) should be confirmed before Task 004.
+  - Skia vs SVG decision should be confirmed before Task 005.
+  - After Task 009 (cymatics simulation), test performance on a physical iPad — it will be the most demanding feature.
