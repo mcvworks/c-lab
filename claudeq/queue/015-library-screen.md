@@ -2,7 +2,7 @@
 task_id: "015"
 title: Library Screen
 status: queued
-priority: 14
+priority: 0
 requires_approval: false
 ---
 

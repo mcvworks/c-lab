@@ -1,19 +1,20 @@
-project_id: c-lab
-project_name: "c-lab"
-location_tag: ""
-repo_path: /home/dev1/projects/c-lab
-default_branch: main
 active: true
+allowed_modes:
+- claude
+- script
 approval_profile: default
+default_branch: main
+default_model: opus
+idle_timeout_minutes: 30
+location_tag: ''
+notes: ''
+project_id: c-lab
+project_name: c-lab
+repo_path: /home/dev1/projects/c-lab
 task_folders:
-  queue: queue
-  running: running
   done: done
   failed: failed
-  logs: logs
   handoff: handoff
-allowed_modes:
-  - claude
-  - script
-notes: ""
-idle_timeout_minutes: 30
+  logs: logs
+  queue: queue
+  running: running

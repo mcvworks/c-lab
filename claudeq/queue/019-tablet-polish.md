@@ -1,10 +1,13 @@
 ---
-task_id: "019"
-title: Tablet Polish Pass
-status: queued
-priority: 18
+failure_reason: Claude exited with code 143
+priority: 0
 requires_approval: false
+status: queued
+task_id: 019
+title: Tablet Polish Pass
 ---
+
+
 
 ## Objective
 Improve the app experience specifically for iPad/tablet layouts.

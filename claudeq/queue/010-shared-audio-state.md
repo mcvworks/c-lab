@@ -2,7 +2,7 @@
 task_id: "010"
 title: Shared Audio State Between Explore and Cymatics
 status: queued
-priority: 9
+priority: 0
 requires_approval: false
 ---
 

@@ -2,7 +2,7 @@
 task_id: "011"
 title: Composer Screen Layout
 status: queued
-priority: 10
+priority: 0
 requires_approval: false
 ---
 

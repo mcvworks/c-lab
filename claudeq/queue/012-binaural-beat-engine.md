@@ -2,7 +2,7 @@
 task_id: "012"
 title: Binaural Beat Engine
 status: queued
-priority: 11
+priority: 0
 requires_approval: false
 ---
 

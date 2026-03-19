@@ -2,7 +2,7 @@
 task_id: "004"
 title: Basic Audio Engine for Tone Generation
 status: queued
-priority: 3
+priority: 0
 requires_approval: false
 ---
 

@@ -2,7 +2,7 @@
 task_id: "009"
 title: Digital Sand Plate Simulation v1
 status: queued
-priority: 8
+priority: 0
 requires_approval: false
 ---
 

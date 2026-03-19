@@ -2,7 +2,7 @@
 task_id: "005"
 title: Live Waveform Visualization
 status: queued
-priority: 4
+priority: 0
 requires_approval: false
 ---
 

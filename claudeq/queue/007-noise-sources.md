@@ -2,7 +2,7 @@
 task_id: "007"
 title: Add Noise Sources
 status: queued
-priority: 6
+priority: 0
 requires_approval: false
 ---
 

@@ -2,7 +2,7 @@
 task_id: "016"
 title: Export System v1
 status: queued
-priority: 15
+priority: 0
 requires_approval: false
 ---
 

@@ -2,7 +2,7 @@
 task_id: "008"
 title: Cymatics Screen Initial UX
 status: queued
-priority: 7
+priority: 0
 requires_approval: false
 ---
 

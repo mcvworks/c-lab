@@ -1,7 +1,7 @@
 ---
-priority: 19
+priority: 0
 requires_approval: false
-status: done
+status: queued
 task_id: '020'
 title: MVP Cleanup and Launch Readiness Pass
 ---

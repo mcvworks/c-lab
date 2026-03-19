@@ -2,7 +2,7 @@
 task_id: "006"
 title: Spectrum Visualization
 status: queued
-priority: 5
+priority: 0
 requires_approval: false
 ---
 

@@ -2,7 +2,7 @@
 task_id: "013"
 title: Ambient Layer System v1
 status: queued
-priority: 12
+priority: 0
 requires_approval: false
 ---
 

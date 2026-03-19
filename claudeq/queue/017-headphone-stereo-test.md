@@ -2,7 +2,7 @@
 task_id: "017"
 title: Headphone Check / Stereo Test
 status: queued
-priority: 16
+priority: 0
 requires_approval: false
 ---
 
