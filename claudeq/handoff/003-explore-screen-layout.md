@@ -1,0 +1,26 @@
+# Handoff
+- Task: 003 — Explore Screen Basic Layout
+- Status: Complete
+- Summary: Built the full Explore screen UI with waveform and spectrum visualization cards, tone controls (waveform type, frequency, amplitude), quick note presets, and play/stop controls. Created WaveformView and SpectrumView SVG components with mocked data that responds to parameter changes. Layout is responsive for phone and tablet.
+- Files Changed:
+  - `src/components/WaveformView.tsx` — new SVG waveform renderer (sine/square/saw/triangle)
+  - `src/components/SpectrumView.tsx` — new SVG spectrum bar visualization
+  - `src/components/index.ts` — added barrel exports for new components
+  - `app/(tabs)/explore.tsx` — full Explore screen with visualization cards, controls, presets
+  - `package.json` — added react-native-svg dependency
+- Commands Run:
+  - `npx expo install react-native-svg`
+  - `npx tsc --noEmit` (passed)
+- Testing:
+  - Run `npx expo start` and open Explore tab
+  - Verify waveform card shows SVG waveform that changes with waveform type/frequency/amplitude
+  - Verify spectrum card shows frequency bars that respond to frequency/amplitude
+  - Verify segmented control switches waveform types
+  - Verify sliders adjust frequency (20-2000 Hz) and amplitude (0-100%)
+  - Verify quick note presets (A4, C4, E4, G4) update frequency
+  - Verify play/stop toggle state works
+  - Verify reset button restores defaults
+  - Test on phone and tablet widths
+- Blockers: None
+- Next Recommended Task: 004 — Basic Audio Engine
+- Notes: Visualizations use mocked/static data. Once the audio engine is built (task 004), these components can be connected to real-time audio data. The WaveformView generates paths based on waveform math; the SpectrumView uses a gaussian peak model with harmonics.

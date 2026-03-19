@@ -5,3 +5,5 @@ export { default as PrimaryButton } from './PrimaryButton';
 export { default as IconButton } from './IconButton';
 export { default as PrimarySlider } from './PrimarySlider';
 export { default as SegmentedControl } from './SegmentedControl';
+export { default as WaveformView } from './WaveformView';
+export { default as SpectrumView } from './SpectrumView';
