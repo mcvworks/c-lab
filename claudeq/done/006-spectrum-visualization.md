@@ -1,10 +1,11 @@
 ---
-task_id: "006"
-title: Spectrum Visualization
-status: queued
 priority: 0
 requires_approval: false
+status: running
+task_id: '006'
+title: Spectrum Visualization
 ---
+
 
 ## Objective
 Add a spectrum/frequency visualization for the Explore screen.

@@ -1,0 +1,20 @@
+# Handoff
+- Task: 006 — Spectrum Visualization
+- Status: Complete
+- Summary: Upgraded SpectrumView from a static bar chart to a real-time animated spectrum visualization. When playing, bars animate with smooth frequency-aware jitter using requestAnimationFrame + setNativeProps for high performance. When stopped, the spectrum freezes at its current state. The Explore screen now passes isPlaying to SpectrumView and applies the glow effect to the spectrum card during playback.
+- Files Changed:
+  - `src/components/SpectrumView.tsx` — Rewrote with animation loop (requestAnimationFrame + setNativeProps pattern matching WaveformView), added isPlaying prop, sin-based jitter for smooth animated noise floor
+  - `app/(tabs)/explore.tsx` — Pass isPlaying to SpectrumView, add glowing prop to spectrum Card
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Run `npx expo start`
+  - Navigate to Explore tab
+  - Tap Play — spectrum bars should animate with smooth jitter
+  - Change frequency — peak position shifts across the bar range
+  - Change amplitude — bar heights scale proportionally
+  - Tap Stop — bars freeze in place
+  - Both waveform and spectrum cards glow when playing
+- Blockers: None
+- Next Recommended Task: Cymatics visualization (task 007 or next in queue)
+- Notes: Animation uses deterministic sin-based noise rather than Math.random() for smoother visual transitions between frames.

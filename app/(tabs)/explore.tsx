@@ -105,7 +105,7 @@ export default function ExploreScreen() {
         </Card>
 
         {/* Spectrum Visualization */}
-        <Card style={styles.vizCard}>
+        <Card style={styles.vizCard} glowing={isPlaying}>
           <View style={styles.vizHeader}>
             <Text style={styles.vizTitle}>Spectrum</Text>
             <Text style={styles.vizBadge}>{Math.round(amplitude * 100)}% level</Text>
@@ -116,6 +116,7 @@ export default function ExploreScreen() {
               amplitude={amplitude}
               width={cardContentWidth}
               height={vizHeight}
+              isPlaying={isPlaying}
             />
           </View>
         </Card>
