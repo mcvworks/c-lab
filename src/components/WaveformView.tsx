@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors } from '@/src/theme';
@@ -9,27 +9,34 @@ interface WaveformViewProps {
   amplitude: number;
   width: number;
   height: number;
+  isPlaying?: boolean;
   style?: ViewStyle;
 }
 
+/** Number of waveform cycles visible in the view */
+function getCycleCount(frequency: number): number {
+  return Math.max(2, Math.min(6, frequency / 150));
+}
+
+/** Generate the SVG stroke path for a waveform at a given phase offset */
 function generateWaveformPath(
   waveform: string,
   frequency: number,
   amplitude: number,
   width: number,
   height: number,
+  phaseOffset: number,
 ): string {
   const mid = height / 2;
   const amp = (height / 2 - 4) * amplitude;
-  // Show 2-4 cycles depending on frequency
-  const cycles = Math.max(2, Math.min(6, frequency / 150));
+  const cycles = getCycleCount(frequency);
   const points = Math.max(200, Math.round(width));
 
   const parts: string[] = [];
 
   for (let i = 0; i <= points; i++) {
     const x = (i / points) * width;
-    const t = (i / points) * cycles * Math.PI * 2;
+    const t = (i / points) * cycles * Math.PI * 2 + phaseOffset;
     let y = 0;
 
     switch (waveform) {
@@ -40,12 +47,12 @@ function generateWaveformPath(
         y = Math.sin(t) >= 0 ? 1 : -1;
         break;
       case 'saw': {
-        const phase = ((t / (Math.PI * 2)) % 1);
+        const phase = (((t / (Math.PI * 2)) % 1) + 1) % 1;
         y = 2 * phase - 1;
         break;
       }
       case 'triangle': {
-        const phase = ((t / (Math.PI * 2)) % 1);
+        const phase = (((t / (Math.PI * 2)) % 1) + 1) % 1;
         y = 4 * Math.abs(phase - 0.5) - 1;
         break;
       }
@@ -64,8 +71,9 @@ function generateFillPath(
   amplitude: number,
   width: number,
   height: number,
+  phaseOffset: number,
 ): string {
-  const linePath = generateWaveformPath(waveform, frequency, amplitude, width, height);
+  const linePath = generateWaveformPath(waveform, frequency, amplitude, width, height, phaseOffset);
   return `${linePath} L${width},${height} L0,${height} Z`;
 }
 
@@ -75,19 +83,83 @@ export default function WaveformView({
   amplitude,
   width,
   height,
+  isPlaying = false,
   style,
 }: WaveformViewProps) {
-  const linePath = useMemo(
-    () => generateWaveformPath(waveform, frequency, amplitude, width, height),
-    [waveform, frequency, amplitude, width, height],
-  );
+  const linePathRef = useRef<Path | null>(null);
+  const fillPathRef = useRef<Path | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const phaseRef = useRef(0);
+  const lastTimeRef = useRef<number | null>(null);
 
-  const fillPath = useMemo(
-    () => generateFillPath(waveform, frequency, amplitude, width, height),
-    [waveform, frequency, amplitude, width, height],
-  );
+  // Refs for latest props so the animation loop always reads current values
+  const propsRef = useRef({ waveform, frequency, amplitude, width, height });
+  propsRef.current = { waveform, frequency, amplitude, width, height };
+
+  const updatePaths = useCallback((phase: number) => {
+    const { waveform: w, frequency: f, amplitude: a, width: cw, height: ch } = propsRef.current;
+    if (cw <= 0 || ch <= 0) return;
+
+    const line = generateWaveformPath(w, f, a, cw, ch, phase);
+    const fill = `${line} L${cw},${ch} L0,${ch} Z`;
+
+    linePathRef.current?.setNativeProps({ d: line });
+    fillPathRef.current?.setNativeProps({ d: fill });
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      // When stopped, render static waveform at current phase and stop animating
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      lastTimeRef.current = null;
+      updatePaths(phaseRef.current);
+      return;
+    }
+
+    // Animation loop
+    const tick = (time: number) => {
+      if (lastTimeRef.current != null) {
+        const dt = (time - lastTimeRef.current) / 1000; // seconds
+        // Scroll speed: phase advances proportionally to frequency.
+        // Scale down so the visual motion feels natural rather than a blur.
+        const speed = propsRef.current.frequency * 0.3;
+        phaseRef.current += speed * dt * Math.PI * 2 / getCycleCount(propsRef.current.frequency);
+        // Keep phase bounded to avoid precision loss over long sessions
+        if (phaseRef.current > Math.PI * 200) {
+          phaseRef.current -= Math.PI * 200;
+        }
+      }
+      lastTimeRef.current = time;
+      updatePaths(phaseRef.current);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      lastTimeRef.current = null;
+    };
+  }, [isPlaying, updatePaths]);
+
+  // Update static display when props change while not playing
+  useEffect(() => {
+    if (!isPlaying) {
+      updatePaths(phaseRef.current);
+    }
+  }, [waveform, frequency, amplitude, width, height, isPlaying, updatePaths]);
 
   if (width <= 0 || height <= 0) return null;
+
+  // Initial paths for first render
+  const initialLine = generateWaveformPath(waveform, frequency, amplitude, width, height, phaseRef.current);
+  const initialFill = generateFillPath(waveform, frequency, amplitude, width, height, phaseRef.current);
 
   return (
     <View style={[styles.container, style]}>
@@ -98,9 +170,10 @@ export default function WaveformView({
             <Stop offset="1" stopColor={colors.accent} stopOpacity={0} />
           </LinearGradient>
         </Defs>
-        <Path d={fillPath} fill="url(#waveGradient)" />
+        <Path ref={fillPathRef} d={initialFill} fill="url(#waveGradient)" />
         <Path
-          d={linePath}
+          ref={linePathRef}
+          d={initialLine}
           fill="none"
           stroke={colors.accent}
           strokeWidth={2}

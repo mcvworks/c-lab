@@ -1,10 +1,11 @@
 ---
-task_id: "005"
-title: Live Waveform Visualization
-status: queued
 priority: 0
 requires_approval: false
+status: running
+task_id: '005'
+title: Live Waveform Visualization
 ---
+
 
 ## Objective
 Replace mocked waveform visuals with a real or near-real waveform visualization driven by current tone settings.

@@ -1,0 +1,25 @@
+# Handoff
+- Task: 005 - Live Waveform Visualization
+- Status: Complete
+- Summary: Replaced the static WaveformView with a real-time animated visualization. The waveform now scrolls smoothly when playing, with phase speed tied to frequency. Uses requestAnimationFrame with setNativeProps for direct SVG path updates, avoiding React re-renders for optimal performance. When stopped, the waveform displays statically at the current phase. All waveform types (sine, square, saw, triangle), frequency, and amplitude changes are reflected visually in real time.
+- Files Changed:
+  - `src/components/WaveformView.tsx` — complete rewrite: added requestAnimationFrame animation loop, phase-offset scrolling, setNativeProps for direct SVG updates, isPlaying prop
+  - `app/(tabs)/explore.tsx` — pass isPlaying prop to WaveformView
+- Commands Run:
+  - `npx tsc --noEmit` (passes clean)
+- Testing:
+  - Run `npx expo start` and open on iOS simulator or device
+  - Tap Play Tone — waveform should begin scrolling smoothly
+  - Change frequency — scroll speed and cycle density should change
+  - Change amplitude — wave height should change in real time
+  - Switch waveform type — shape should update immediately (sine=smooth, square=stepped, saw=ramp, triangle=zigzag)
+  - Tap Stop — waveform should freeze at current position
+  - Verify no jank or frame drops during animation
+  - Test on both phone and tablet screen widths
+- Blockers: None
+- Next Recommended Task: 006 - Cymatics digital sand plate visualization
+- Notes:
+  - Animation uses setNativeProps to bypass React reconciliation — this is the standard high-performance pattern for react-native-svg animations
+  - Phase offset is bounded to prevent floating-point precision loss during long sessions
+  - Scroll speed scales with frequency (0.3x factor) to keep visual motion natural rather than blurring at high frequencies
+  - The component remains fully reusable with the same props interface plus optional isPlaying

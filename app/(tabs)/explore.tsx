@@ -99,6 +99,7 @@ export default function ExploreScreen() {
               amplitude={amplitude}
               width={cardContentWidth}
               height={vizHeight}
+              isPlaying={isPlaying}
             />
           </View>
         </Card>
