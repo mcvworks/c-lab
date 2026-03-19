@@ -1,10 +1,11 @@
 ---
-task_id: "004"
-title: Basic Audio Engine for Tone Generation
-status: queued
 priority: 0
 requires_approval: false
+status: running
+task_id: '004'
+title: Basic Audio Engine for Tone Generation
 ---
+
 
 ## Objective
 Add the first simple audio generation/playback layer for tones used by Explore.

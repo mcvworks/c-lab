@@ -1,0 +1,32 @@
+# Handoff
+- Task: 004 - Basic Audio Engine for Tone Generation
+- Status: Complete
+- Summary: Implemented a tone generation engine using dynamically generated WAV buffers played via expo-av. Supports all 4 waveform types (sine, square, saw, triangle) with live parameter updates. Wired into the Explore screen so all controls affect real audio playback.
+- Files Changed:
+  - `src/audio/types.ts` — shared types (WaveformType, ToneParams, SAMPLE_RATE)
+  - `src/audio/generateSamples.ts` — PCM sample generation for all 4 waveform types with fade envelope
+  - `src/audio/encodeWav.ts` — 16-bit mono WAV encoder (base64 output)
+  - `src/audio/ToneGenerator.ts` — manages playback lifecycle via expo-av, handles param swaps
+  - `src/audio/index.ts` — barrel exports
+  - `src/hooks/useToneGenerator.ts` — React hook wrapping ToneGenerator with lifecycle cleanup
+  - `app/(tabs)/explore.tsx` — wired play/stop/reset to real audio, added live param update effect
+  - `package.json` — added expo-av, expo-file-system dependencies
+- Commands Run:
+  - `npx expo install expo-av expo-file-system`
+  - `npx tsc --noEmit` (passes clean)
+- Testing:
+  - Run `npx expo start` and open on iOS simulator or device
+  - Tap Play Tone — should hear a 440 Hz sine tone
+  - Change waveform type — sound should change character (square=buzzy, saw=bright, triangle=mellow)
+  - Adjust frequency slider — pitch should change while playing
+  - Adjust amplitude slider — volume should change while playing
+  - Tap Stop — tone should stop cleanly without click
+  - Tap Reset — should stop and reset all controls to defaults
+  - Test note presets (A4, C4, E4, G4) while playing — frequency should update live
+- Blockers: None
+- Next Recommended Task: 005 - Live Waveform Visualization (wire visualization to real audio data)
+- Notes:
+  - Audio is generated as phase-aligned WAV loops to prevent clicks at loop boundaries
+  - Short fade envelope (64 samples) applied at buffer edges for clean start/stop
+  - ToneGenerator class is designed to be extensible for composer/binaural work later
+  - expo-file-system uses new SDK 55 File/Paths API (not legacy writeAsStringAsync)

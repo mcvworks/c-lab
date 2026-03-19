@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useToneGenerator } from '@/src/hooks/useToneGenerator';
 import {
   Screen,
   Card,
@@ -36,6 +37,9 @@ export default function ExploreScreen() {
   const [waveform, setWaveform] = useState<Waveform>('sine');
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const tone = useToneGenerator();
+  const isPlayingRef = useRef(false);
+
   const { width: screenWidth } = useWindowDimensions();
   const isTablet = screenWidth >= 768;
 
@@ -43,21 +47,37 @@ export default function ExploreScreen() {
   const cardContentWidth = screenWidth - spacing.md * 4;
   const vizHeight = isTablet ? 200 : 140;
 
-  const handlePlay = useCallback(() => {
-    setIsPlaying(true);
-    Alert.alert('Play', `${waveform} @ ${Math.round(frequency)} Hz`);
-  }, [waveform, frequency]);
+  const handlePlay = useCallback(async () => {
+    try {
+      await tone.play(frequency, amplitude, waveform);
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+    } catch (e) {
+      Alert.alert('Audio Error', 'Could not start tone playback.');
+    }
+  }, [tone, waveform, frequency, amplitude]);
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     setIsPlaying(false);
-  }, []);
+    isPlayingRef.current = false;
+    await tone.stop();
+  }, [tone]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
+    setIsPlaying(false);
+    isPlayingRef.current = false;
+    await tone.stop();
     setFrequency(440);
     setAmplitude(0.5);
     setWaveform('sine');
-    setIsPlaying(false);
-  }, []);
+  }, [tone]);
+
+  // Update audio params live while playing
+  useEffect(() => {
+    if (isPlayingRef.current) {
+      tone.updateParams(frequency, amplitude, waveform);
+    }
+  }, [frequency, amplitude, waveform, tone]);
 
   return (
     <Screen>
