@@ -22,5 +22,5 @@ Create a coherent shared audio/settings layer so the app behaves consistently ac
 - [x] Explore and Cymatics interoperating sensibly
 - [x] No broken playback on tab switch
 - [x] State is modular and predictable
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

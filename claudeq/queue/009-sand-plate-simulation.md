@@ -26,5 +26,5 @@ Implement the first digital cymatics / sand plate simulation.
 - [x] Patterns respond to frequency changes
 - [x] At least 2 plate shapes and 2 particle presets work
 - [x] Visually mesmerizing
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

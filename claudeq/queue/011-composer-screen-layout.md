@@ -30,5 +30,5 @@ Build the first real Composer screen UI.
 - [x] Clean UX for future audio wiring
 - [x] All control sections rendered
 - [x] Responsive on phone and tablet
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote
