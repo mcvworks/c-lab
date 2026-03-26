@@ -12,3 +12,5 @@ export { renderSession } from './exportEngine';
 export type { ExportProgress, ExportResult } from './exportEngine';
 export type { ToneParams, AudioParams, WaveformType, NoiseType, SourceMode } from './types';
 export { SAMPLE_RATE, DEFAULT_TONE } from './types';
+export { StereoTestEngine } from './StereoTestEngine';
+export type { StereoTestMode } from './StereoTestEngine';

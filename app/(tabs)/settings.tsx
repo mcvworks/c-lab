@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
+import HeadphoneTest from '@/src/components/HeadphoneTest';
 import { colors, spacing, typography } from '@/src/theme';
 
 export default function SettingsScreen() {
@@ -18,6 +19,8 @@ export default function SettingsScreen() {
           Binaural beats work best with stereo headphones.
         </Text>
       </Card>
+
+      <HeadphoneTest />
 
       <Card style={styles.card}>
         <Text style={styles.sectionLabel}>App Info</Text>

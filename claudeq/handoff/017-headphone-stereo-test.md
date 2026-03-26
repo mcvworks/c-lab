@@ -1,0 +1,28 @@
+# Handoff
+- Task: 017 — Headphone Check / Stereo Test
+- Status: done
+- Summary: Added a headphone stereo verification utility to the Settings screen. Users can tap L, R, Both, or Phase buttons to play test tones through specific channels. Built with a dedicated StereoTestEngine using Web Audio ChannelMergerNode for true stereo separation.
+- Files Changed:
+  - `src/audio/StereoTestEngine.ts` — new audio engine for stereo channel test tones (left, right, both, phase)
+  - `src/audio/index.ts` — exported StereoTestEngine and StereoTestMode type
+  - `src/components/HeadphoneTest.tsx` — new UI component with 4 test buttons, active state, descriptions, and headphone recommendation note
+  - `app/(tabs)/settings.tsx` — integrated HeadphoneTest component after Audio Safety card
+  - `claudeq/queue/017-headphone-stereo-test.md` — marked done
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open Settings tab
+  - "Headphone Check" card appears below Audio Safety
+  - Tap "Left" — tone plays in left ear only
+  - Tap "Right" — tone plays in right ear only
+  - Tap "Both" — tone plays in both ears
+  - Tap "Phase" — inverted right channel creates hollow/diffuse sound in stereo headphones (cancels in mono)
+  - Tapping an active button stops playback
+  - Active button shows accent glow highlight
+  - Headphone recommendation note displayed at bottom of card
+- Blockers: none
+- Next Recommended Task: 018 or Settings polish
+- Notes:
+  - Test tone is 440 Hz sine at 0.35 amplitude (safe listening level)
+  - Smooth 30ms fade-in and 60ms fade-out prevent clicks
+  - Phase test is a useful stereo verification — if the tone disappears, the device is playing in mono
