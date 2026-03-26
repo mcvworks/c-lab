@@ -4,10 +4,14 @@ import { generateSamples } from './generateSamples';
 import { generateNoiseSamples } from './generateNoiseSamples';
 import { encodeWavBase64 } from './encodeWav';
 
+// Duration of crossfade between old and new buffer sources (seconds)
+const XFADE_TIME = 0.04;
+
 /**
  * Manages tone/noise generation and playback.
  *
- * On web: uses Web Audio API with AudioBuffer for proper looped playback.
+ * On web: uses Web Audio API with AudioBuffer. Parameter changes crossfade
+ * between old and new buffer sources to prevent clicks/pops.
  * On native: uses expo-av with temp WAV files.
  */
 export class ToneGenerator {
@@ -95,26 +99,52 @@ export class ToneGenerator {
       channelData[i] = samples[i];
     }
 
-    // Stop previous source
-    this.stopWebSource();
+    const now = ctx.currentTime;
+    const oldSource = this.sourceNode;
+    const oldGain = this.gainNode;
 
-    // Create gain node for volume control
-    if (!this.gainNode) {
-      this.gainNode = ctx.createGain();
-      this.gainNode.connect(ctx.destination);
-    }
-    this.gainNode.gain.value = params.amplitude;
+    // Create new gain node for this source
+    const newGain = ctx.createGain();
+    newGain.connect(ctx.destination);
 
     // Create and start new source
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(this.gainNode);
-    source.start();
-    this.sourceNode = source;
+    const newSource = ctx.createBufferSource();
+    newSource.buffer = buffer;
+    newSource.loop = true;
+    newSource.connect(newGain);
+
+    if (oldSource && oldGain) {
+      // Crossfade: ramp old down, ramp new up
+      newGain.gain.setValueAtTime(0, now);
+      newGain.gain.linearRampToValueAtTime(params.amplitude, now + XFADE_TIME);
+      newSource.start(now);
+
+      oldGain.gain.linearRampToValueAtTime(0, now + XFADE_TIME);
+      // Schedule cleanup of old source after crossfade completes
+      setTimeout(() => {
+        try {
+          oldSource.stop();
+          oldSource.disconnect();
+          oldGain.disconnect();
+        } catch { /* already stopped */ }
+      }, XFADE_TIME * 1000 + 20);
+    } else {
+      // First play — no crossfade needed, just start cleanly
+      newGain.gain.setValueAtTime(params.amplitude, now);
+      newSource.start(now);
+    }
+
+    this.sourceNode = newSource;
+    this.gainNode = newGain;
   }
 
-  private stopWebSource(): void {
+  private async stopWeb(): Promise<void> {
+    // Fade out quickly to avoid click
+    if (this.gainNode && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.gainNode.gain.linearRampToValueAtTime(0, now + 0.06);
+      await new Promise((r) => setTimeout(r, 80));
+    }
     if (this.sourceNode) {
       try {
         this.sourceNode.stop();
@@ -122,15 +152,10 @@ export class ToneGenerator {
       } catch { /* already stopped */ }
       this.sourceNode = null;
     }
-  }
-
-  private async stopWeb(): Promise<void> {
-    // Fade out quickly to avoid click
-    if (this.gainNode && this.audioCtx) {
-      this.gainNode.gain.setTargetAtTime(0, this.audioCtx.currentTime, 0.02);
-      await new Promise((r) => setTimeout(r, 50));
+    if (this.gainNode) {
+      try { this.gainNode.disconnect(); } catch { /* */ }
+      this.gainNode = null;
     }
-    this.stopWebSource();
   }
 
   // ── Native (expo-av) ──────────────────────────────────────────

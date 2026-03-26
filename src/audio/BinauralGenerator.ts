@@ -11,27 +11,37 @@ export interface BinauralParams {
 /**
  * Generates and plays stereo binaural beat audio.
  *
- * On web: Web Audio API with a stereo AudioBuffer.
- * On native: expo-av with stereo WAV temp files.
+ * On web: two OscillatorNodes merged into a stereo output via
+ * ChannelMergerNode. Frequency and volume changes are applied with
+ * short exponential ramps — no buffer regeneration, no clicks.
  *
- * Separate from ToneGenerator because binaural beats require
- * independent left/right channel frequencies.
+ * On native: expo-av with stereo WAV temp files.
  */
 export class BinauralGenerator {
   private currentParams: BinauralParams | null = null;
   private playing = false;
 
-  // Web Audio API state
+  // Web Audio API state (oscillator-based for click-free updates)
   private audioCtx: AudioContext | null = null;
-  private sourceNode: AudioBufferSourceNode | null = null;
-  private gainNode: GainNode | null = null;
+  private leftOsc: OscillatorNode | null = null;
+  private rightOsc: OscillatorNode | null = null;
+  private leftGain: GainNode | null = null;
+  private rightGain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private merger: ChannelMergerNode | null = null;
 
   // Native state
   private nativeSound: any = null;
   private tempFile: any = null;
 
   async play(params: BinauralParams): Promise<void> {
-    await this.loadAndPlay(params);
+    if (Platform.OS === 'web') {
+      await this.playWeb(params);
+    } else {
+      await this.playNative(params);
+    }
+    this.currentParams = { ...params };
+    this.playing = true;
   }
 
   async stop(): Promise<void> {
@@ -47,7 +57,14 @@ export class BinauralGenerator {
   async updateParams(params: BinauralParams): Promise<void> {
     if (!this.playing) return;
     if (this.currentParams && paramsEqual(this.currentParams, params)) return;
-    await this.loadAndPlay(params);
+
+    if (Platform.OS === 'web') {
+      this.updateWebParams(params);
+    } else {
+      // Native must regenerate the WAV buffer
+      await this.playNative(params);
+    }
+    this.currentParams = { ...params };
   }
 
   isPlaying(): boolean {
@@ -62,17 +79,7 @@ export class BinauralGenerator {
     }
   }
 
-  private async loadAndPlay(params: BinauralParams): Promise<void> {
-    if (Platform.OS === 'web') {
-      await this.playWeb(params);
-    } else {
-      await this.playNative(params);
-    }
-    this.currentParams = { ...params };
-    this.playing = true;
-  }
-
-  // ── Web Audio API ──────────────────────────────────────────────
+  // ── Web Audio API (OscillatorNode-based) ───────────────────────
 
   private getAudioContext(): AudioContext {
     if (!this.audioCtx) {
@@ -87,57 +94,88 @@ export class BinauralGenerator {
       await ctx.resume();
     }
 
-    const { left, right } = generateBinauralSamples(
-      params.leftFreq,
-      params.rightFreq,
-      1.0, // amplitude applied via gain node
-    );
+    // Tear down any existing oscillator graph
+    this.teardownWebGraph();
 
-    // Create stereo AudioBuffer
-    const buffer = ctx.createBuffer(2, left.length, 44100);
-    const leftChannel = buffer.getChannelData(0);
-    const rightChannel = buffer.getChannelData(1);
-    for (let i = 0; i < left.length; i++) {
-      leftChannel[i] = left[i];
-      rightChannel[i] = right[i];
-    }
+    const now = ctx.currentTime;
 
-    // Stop previous source
-    this.stopWebSource();
+    // Create channel merger: input 0 → left speaker, input 1 → right speaker
+    this.merger = ctx.createChannelMerger(2);
 
-    // Create gain node for volume control
-    if (!this.gainNode) {
-      this.gainNode = ctx.createGain();
-      this.gainNode.connect(ctx.destination);
-    }
-    this.gainNode.gain.setValueAtTime(params.amplitude, ctx.currentTime);
+    // Master gain for overall volume and fade-out
+    this.masterGain = ctx.createGain();
+    this.masterGain.gain.setValueAtTime(params.amplitude, now);
+    this.merger.connect(this.masterGain);
+    this.masterGain.connect(ctx.destination);
 
-    // Create and start new source
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(this.gainNode);
-    source.start();
-    this.sourceNode = source;
+    // Left oscillator → left channel only
+    this.leftOsc = ctx.createOscillator();
+    this.leftOsc.type = 'sine';
+    this.leftOsc.frequency.setValueAtTime(params.leftFreq, now);
+    this.leftGain = ctx.createGain();
+    this.leftGain.gain.setValueAtTime(1.0, now);
+    this.leftOsc.connect(this.leftGain);
+    this.leftGain.connect(this.merger, 0, 0); // → left channel
+
+    // Right oscillator → right channel only
+    this.rightOsc = ctx.createOscillator();
+    this.rightOsc.type = 'sine';
+    this.rightOsc.frequency.setValueAtTime(params.rightFreq, now);
+    this.rightGain = ctx.createGain();
+    this.rightGain.gain.setValueAtTime(1.0, now);
+    this.rightOsc.connect(this.rightGain);
+    this.rightGain.connect(this.merger, 0, 1); // → right channel
+
+    this.leftOsc.start(now);
+    this.rightOsc.start(now);
   }
 
-  private stopWebSource(): void {
-    if (this.sourceNode) {
-      try {
-        this.sourceNode.stop();
-        this.sourceNode.disconnect();
-      } catch { /* already stopped */ }
-      this.sourceNode = null;
+  private updateWebParams(params: BinauralParams): void {
+    if (!this.audioCtx || !this.leftOsc || !this.rightOsc || !this.masterGain) return;
+
+    const now = this.audioCtx.currentTime;
+    const rampTime = 0.03; // 30ms ramp prevents clicks
+
+    this.leftOsc.frequency.linearRampToValueAtTime(params.leftFreq, now + rampTime);
+    this.rightOsc.frequency.linearRampToValueAtTime(params.rightFreq, now + rampTime);
+    this.masterGain.gain.linearRampToValueAtTime(params.amplitude, now + rampTime);
+  }
+
+  private teardownWebGraph(): void {
+    if (this.leftOsc) {
+      try { this.leftOsc.stop(); this.leftOsc.disconnect(); } catch { /* */ }
+      this.leftOsc = null;
+    }
+    if (this.rightOsc) {
+      try { this.rightOsc.stop(); this.rightOsc.disconnect(); } catch { /* */ }
+      this.rightOsc = null;
+    }
+    if (this.leftGain) {
+      try { this.leftGain.disconnect(); } catch { /* */ }
+      this.leftGain = null;
+    }
+    if (this.rightGain) {
+      try { this.rightGain.disconnect(); } catch { /* */ }
+      this.rightGain = null;
+    }
+    if (this.merger) {
+      try { this.merger.disconnect(); } catch { /* */ }
+      this.merger = null;
+    }
+    if (this.masterGain) {
+      try { this.masterGain.disconnect(); } catch { /* */ }
+      this.masterGain = null;
     }
   }
 
   private async stopWeb(): Promise<void> {
-    // Fade out quickly to avoid click
-    if (this.gainNode && this.audioCtx) {
-      this.gainNode.gain.setTargetAtTime(0, this.audioCtx.currentTime, 0.02);
-      await new Promise((r) => setTimeout(r, 50));
+    // Fade out over ~60ms to avoid click
+    if (this.masterGain && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.06);
+      await new Promise((r) => setTimeout(r, 80));
     }
-    this.stopWebSource();
+    this.teardownWebGraph();
   }
 
   // ── Native (expo-av) ──────────────────────────────────────────
