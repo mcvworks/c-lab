@@ -1,0 +1,34 @@
+# Handoff
+- Task: 011 — Composer Screen Layout
+- Status: done
+- Summary: Built the full Composer screen UI with three major sections: binaural beat controls, ambient layer system, and session settings. All controls are interactive and state-managed, ready for audio wiring in the next task.
+- Files Changed:
+  - `app/(tabs)/composer.tsx` — replaced placeholder with full Composer screen layout
+  - `claudeq/queue/011-composer-screen-layout.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Navigate to Composer tab — full UI should render
+  - Adjust Base Frequency slider — left/right ear readout updates in real time
+  - Adjust Beat Difference slider — badge updates, brainwave preset highlights if matching
+  - Tap brainwave presets (Delta/Theta/Alpha/Beta) — beat difference snaps to preset value
+  - Binaural Volume slider works
+  - Ambient layers: default rain layer present with volume slider
+  - Tap "+ Add Layer" — new layer appears (up to 5 max)
+  - Switch layer type buttons (Rain/Ocean/Wind/Forest/Fire)
+  - Toggle ON/OFF per layer
+  - Remove layer with ✕ button
+  - Duration section: tap preset buttons (5/10/15/30/60m) or use slider
+  - Fade In/Out: tap None/5s/10s/30s presets
+  - "Start Session" button shows placeholder alert
+  - Save and Info icon buttons work
+  - Headphone safety notice displayed at bottom
+  - Verify responsive layout on narrow and wide screens
+- Blockers: None
+- Next Recommended Task: 012 (binaural beat audio engine wiring)
+- Notes:
+  - Brainwave presets: Delta (2 Hz), Theta (6 Hz), Alpha (10 Hz), Beta (20 Hz)
+  - Max 5 ambient layers enforced with alert
+  - Layer type auto-picks first unused type when adding
+  - "Start Session" is a placeholder — actual audio wiring is a separate task
+  - Safety notice about stereo headphones included per product requirements

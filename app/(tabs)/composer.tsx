@@ -1,60 +1,497 @@
-import { StyleSheet, Text, View } from 'react-native';
-import Screen from '@/src/components/Screen';
-import Card from '@/src/components/Card';
-import { colors, spacing, typography } from '@/src/theme';
+import { useState, useCallback } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Screen,
+  Card,
+  SectionHeader,
+  PrimaryButton,
+  IconButton,
+  PrimarySlider,
+  SegmentedControl,
+} from '@/src/components';
+import { colors, spacing, typography, radius } from '@/src/theme';
+
+// ── Binaural brainwave presets ──────────────────────────────────────
+
+const BRAINWAVE_PRESETS = ['delta', 'theta', 'alpha', 'beta'] as const;
+type BrainwavePreset = (typeof BRAINWAVE_PRESETS)[number];
+
+const BRAINWAVE_LABELS: Record<BrainwavePreset, string> = {
+  delta: 'Delta',
+  theta: 'Theta',
+  alpha: 'Alpha',
+  beta: 'Beta',
+};
+
+const BRAINWAVE_RANGES: Record<BrainwavePreset, { diff: number; desc: string }> = {
+  delta: { diff: 2, desc: 'Deep sleep · 0.5–4 Hz' },
+  theta: { diff: 6, desc: 'Meditation · 4–8 Hz' },
+  alpha: { diff: 10, desc: 'Relaxation · 8–13 Hz' },
+  beta: { diff: 20, desc: 'Focus · 13–30 Hz' },
+};
+
+// ── Ambient layer types ─────────────────────────────────────────────
+
+const AMBIENT_TYPES = ['rain', 'ocean', 'wind', 'forest', 'fire'] as const;
+type AmbientType = (typeof AMBIENT_TYPES)[number];
+
+const AMBIENT_LABELS: Record<AmbientType, string> = {
+  rain: '🌧 Rain',
+  ocean: '🌊 Ocean',
+  wind: '💨 Wind',
+  forest: '🌿 Forest',
+  fire: '🔥 Fire',
+};
+
+// ── Fade preset options ─────────────────────────────────────────────
+
+const FADE_OPTIONS = [0, 5, 10, 30] as const;
+const DURATION_PRESETS = [5, 10, 15, 30, 60] as const;
+
+// ── Layer interface ─────────────────────────────────────────────────
+
+interface AmbientLayer {
+  id: number;
+  type: AmbientType;
+  volume: number;
+  enabled: boolean;
+}
+
+let nextLayerId = 1;
 
 export default function ComposerScreen() {
+  // Binaural state
+  const [baseFrequency, setBaseFrequency] = useState(200);
+  const [beatDifference, setBeatDifference] = useState(10);
+  const [binauralVolume, setBinauralVolume] = useState(0.5);
+
+  // Ambient layers
+  const [layers, setLayers] = useState<AmbientLayer[]>([
+    { id: nextLayerId++, type: 'rain', volume: 0.4, enabled: true },
+  ]);
+
+  // Session settings
+  const [duration, setDuration] = useState(15);
+  const [fadeIn, setFadeIn] = useState(5);
+  const [fadeOut, setFadeOut] = useState(5);
+
+  const leftFreq = baseFrequency;
+  const rightFreq = baseFrequency + beatDifference;
+
+  // Binaural preset handler
+  const applyBrainwavePreset = useCallback((preset: BrainwavePreset) => {
+    setBeatDifference(BRAINWAVE_RANGES[preset].diff);
+  }, []);
+
+  // Determine which preset is active (if any)
+  const activeBrainwave = BRAINWAVE_PRESETS.find(
+    (p) => Math.abs(beatDifference - BRAINWAVE_RANGES[p].diff) < 0.5,
+  ) ?? null;
+
+  // Layer management
+  const addLayer = useCallback(() => {
+    if (layers.length >= 5) {
+      Alert.alert('Limit Reached', 'Maximum 5 ambient layers.');
+      return;
+    }
+    const usedTypes = new Set(layers.map((l) => l.type));
+    const available = AMBIENT_TYPES.find((t) => !usedTypes.has(t)) ?? 'rain';
+    setLayers((prev) => [...prev, { id: nextLayerId++, type: available, volume: 0.4, enabled: true }]);
+  }, [layers]);
+
+  const removeLayer = useCallback((id: number) => {
+    setLayers((prev) => prev.filter((l) => l.id !== id));
+  }, []);
+
+  const updateLayerVolume = useCallback((id: number, volume: number) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, volume } : l)));
+  }, []);
+
+  const updateLayerType = useCallback((id: number, type: AmbientType) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, type } : l)));
+  }, []);
+
+  const toggleLayer = useCallback((id: number) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l)));
+  }, []);
+
+  // Beat difference badge
+  const beatBadge = activeBrainwave
+    ? `${BRAINWAVE_LABELS[activeBrainwave]} · ${beatDifference.toFixed(1)} Hz`
+    : `${beatDifference.toFixed(1)} Hz beat`;
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <Text style={styles.title}>Composer</Text>
-        <Text style={styles.subtitle}>Binaural beats & ambient layers</Text>
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <SectionHeader title="Composer" subtitle="Binaural beats & ambient layers" />
 
-      <Card style={styles.card}>
-        <Text style={styles.sectionLabel}>Binaural Beat</Text>
-        <Text style={styles.placeholder}>Binaural beat engine coming soon</Text>
-      </Card>
+        {/* ── Binaural Beat Section ──────────────────────────────── */}
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionLabel}>Binaural Beat</Text>
+            <Text style={styles.badge}>{beatBadge}</Text>
+          </View>
 
-      <Card style={styles.card}>
-        <Text style={styles.sectionLabel}>Ambient Layers</Text>
-        <Text style={styles.placeholder}>Ambient layer system coming soon</Text>
-      </Card>
+          {/* Ear frequency readout */}
+          <View style={styles.earReadout}>
+            <View style={styles.earBox}>
+              <Text style={styles.earLabel}>LEFT EAR</Text>
+              <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
+            </View>
+            <View style={styles.earDivider} />
+            <View style={styles.earBox}>
+              <Text style={styles.earLabel}>RIGHT EAR</Text>
+              <Text style={styles.earFreq}>{Math.round(rightFreq)} Hz</Text>
+            </View>
+          </View>
+
+          <PrimarySlider
+            label="Base Frequency"
+            value={baseFrequency}
+            onValueChange={setBaseFrequency}
+            min={80}
+            max={500}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} Hz`}
+            style={styles.slider}
+          />
+
+          <PrimarySlider
+            label="Beat Difference"
+            value={beatDifference}
+            onValueChange={setBeatDifference}
+            min={0.5}
+            max={40}
+            step={0.5}
+            formatValue={(v) => `${v.toFixed(1)} Hz`}
+            style={styles.slider}
+          />
+
+          {/* Brainwave presets */}
+          <Text style={styles.controlLabel}>Brainwave Preset</Text>
+          <View style={styles.presetRow}>
+            {BRAINWAVE_PRESETS.map((preset) => (
+              <PrimaryButton
+                key={preset}
+                title={BRAINWAVE_LABELS[preset]}
+                variant={activeBrainwave === preset ? 'filled' : 'ghost'}
+                onPress={() => applyBrainwavePreset(preset)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+          {activeBrainwave && (
+            <Text style={styles.hint}>{BRAINWAVE_RANGES[activeBrainwave].desc}</Text>
+          )}
+
+          <PrimarySlider
+            label="Binaural Volume"
+            value={binauralVolume}
+            onValueChange={setBinauralVolume}
+            min={0}
+            max={1}
+            step={0.01}
+            formatValue={(v) => `${Math.round(v * 100)}%`}
+            style={styles.slider}
+          />
+        </Card>
+
+        {/* ── Ambient Layers Section ─────────────────────────────── */}
+        <SectionHeader title="AMBIENT LAYERS" label />
+
+        {layers.map((layer) => (
+          <Card key={layer.id} style={styles.card}>
+            <View style={styles.layerHeader}>
+              <PrimaryButton
+                title={layer.enabled ? 'ON' : 'OFF'}
+                variant={layer.enabled ? 'filled' : 'ghost'}
+                onPress={() => toggleLayer(layer.id)}
+                style={styles.toggleButton}
+              />
+              <View style={styles.layerTypeRow}>
+                {AMBIENT_TYPES.map((type) => (
+                  <PrimaryButton
+                    key={type}
+                    title={AMBIENT_LABELS[type]}
+                    variant={layer.type === type ? 'filled' : 'ghost'}
+                    onPress={() => updateLayerType(layer.id, type)}
+                    style={styles.layerTypeButton}
+                  />
+                ))}
+              </View>
+              <IconButton variant="ghost" onPress={() => removeLayer(layer.id)}>
+                <Text style={styles.removeText}>✕</Text>
+              </IconButton>
+            </View>
+            <PrimarySlider
+              label="Volume"
+              value={layer.volume}
+              onValueChange={(v) => updateLayerVolume(layer.id, v)}
+              min={0}
+              max={1}
+              step={0.01}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              style={styles.layerSlider}
+            />
+          </Card>
+        ))}
+
+        <PrimaryButton
+          title={`+ Add Layer${layers.length >= 5 ? ' (max)' : ''}`}
+          variant="outline"
+          onPress={addLayer}
+          style={styles.addLayerButton}
+        />
+
+        {/* ── Session Settings ───────────────────────────────────── */}
+        <SectionHeader title="SESSION" label />
+        <Card style={styles.card}>
+          <Text style={styles.controlLabel}>Duration</Text>
+          <View style={styles.presetRow}>
+            {DURATION_PRESETS.map((d) => (
+              <PrimaryButton
+                key={d}
+                title={`${d}m`}
+                variant={duration === d ? 'filled' : 'ghost'}
+                onPress={() => setDuration(d)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+
+          <PrimarySlider
+            label="Duration"
+            value={duration}
+            onValueChange={(v) => setDuration(Math.round(v))}
+            min={1}
+            max={120}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} min`}
+            style={styles.slider}
+          />
+
+          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade In</Text>
+          <View style={styles.presetRow}>
+            {FADE_OPTIONS.map((f) => (
+              <PrimaryButton
+                key={`in-${f}`}
+                title={f === 0 ? 'None' : `${f}s`}
+                variant={fadeIn === f ? 'filled' : 'ghost'}
+                onPress={() => setFadeIn(f)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+
+          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade Out</Text>
+          <View style={styles.presetRow}>
+            {FADE_OPTIONS.map((f) => (
+              <PrimaryButton
+                key={`out-${f}`}
+                title={f === 0 ? 'None' : `${f}s`}
+                variant={fadeOut === f ? 'filled' : 'ghost'}
+                onPress={() => setFadeOut(f)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+        </Card>
+
+        {/* ── Playback Controls ──────────────────────────────────── */}
+        <View style={styles.buttonRow}>
+          <PrimaryButton
+            title="Start Session"
+            onPress={() => Alert.alert('Coming Soon', 'Session playback will be wired in the next task.')}
+            style={styles.buttonFlex}
+          />
+        </View>
+
+        <View style={styles.iconRow}>
+          <IconButton
+            variant="filled"
+            onPress={() => Alert.alert('Save', 'Preset save coming soon')}
+          >
+            <Text style={styles.iconFilledText}>♡</Text>
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            onPress={() =>
+              Alert.alert(
+                'Composer',
+                'Build binaural beat sessions with ambient layers.\n\nBinaural beats work by playing slightly different frequencies in each ear — the perceived beat frequency is the difference between them.\n\nUse headphones for the full effect.',
+              )
+            }
+          >
+            <Text style={styles.iconText}>ⓘ</Text>
+          </IconButton>
+        </View>
+
+        {/* Safety notice */}
+        <View style={styles.safetyNotice}>
+          <Text style={styles.safetyText}>
+            🎧 Binaural beats require stereo headphones for the intended effect.
+          </Text>
+        </View>
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  title: {
-    fontSize: typography.xxl,
-    fontWeight: typography.bold,
-    color: colors.textPrimary,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: typography.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
   card: {
+    marginBottom: spacing.md,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.md,
   },
   sectionLabel: {
     fontSize: typography.sm,
     fontWeight: typography.semibold,
     color: colors.accent,
-    marginBottom: spacing.sm,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  placeholder: {
-    fontSize: typography.sm,
+  badge: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.accent,
+    backgroundColor: colors.surfaceElevated,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  earReadout: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  earBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  earDivider: {
+    width: 1,
+    backgroundColor: colors.surfaceElevated,
+    marginHorizontal: spacing.sm,
+  },
+  earLabel: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
     color: colors.textMuted,
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  earFreq: {
+    fontSize: typography.xl,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  controlLabel: {
+    fontSize: typography.sm,
+    fontWeight: typography.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  labelSpacing: {
+    marginTop: spacing.lg,
+  },
+  slider: {
+    marginTop: spacing.lg,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  presetButton: {
+    flex: 1,
+    minWidth: 56,
+    paddingVertical: spacing.xs,
+  },
+  hint: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  // Ambient layer styles
+  layerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  toggleButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 44,
+  },
+  layerTypeRow: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  layerTypeButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  layerSlider: {
+    marginTop: spacing.sm,
+  },
+  removeText: {
+    fontSize: 14,
+    color: colors.danger,
+  },
+  addLayerButton: {
+    marginBottom: spacing.md,
+  },
+  // Playback & utility
+  buttonRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  buttonFlex: {
+    flex: 1,
+  },
+  iconRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  iconText: {
+    fontSize: 18,
+    color: colors.accent,
+  },
+  iconFilledText: {
+    fontSize: 18,
+    color: colors.background,
+  },
+  safetyNotice: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.highlight + '33',
+  },
+  safetyText: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
     textAlign: 'center',
-    paddingVertical: spacing.xl,
+    lineHeight: 18,
+  },
+  bottomSpacer: {
+    height: spacing.xxl,
   },
 });

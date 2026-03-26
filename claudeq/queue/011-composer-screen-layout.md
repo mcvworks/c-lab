@@ -1,7 +1,7 @@
 ---
 task_id: "011"
 title: Composer Screen Layout
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -26,9 +26,9 @@ Build the first real Composer screen UI.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Composer screen structure in place
-- [ ] Clean UX for future audio wiring
-- [ ] All control sections rendered
-- [ ] Responsive on phone and tablet
+- [x] Composer screen structure in place
+- [x] Clean UX for future audio wiring
+- [x] All control sections rendered
+- [x] Responsive on phone and tablet
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote
