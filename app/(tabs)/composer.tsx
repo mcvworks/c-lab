@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BinauralGenerator } from '@/src/audio';
 import {
   Screen,
   Card,
@@ -60,6 +61,18 @@ interface AmbientLayer {
 let nextLayerId = 1;
 
 export default function ComposerScreen() {
+  // Binaural generator (singleton per component mount)
+  const generatorRef = useRef<BinauralGenerator | null>(null);
+  const getGenerator = useCallback(() => {
+    if (!generatorRef.current) {
+      generatorRef.current = new BinauralGenerator();
+    }
+    return generatorRef.current;
+  }, []);
+
+  // Playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+
   // Binaural state
   const [baseFrequency, setBaseFrequency] = useState(200);
   const [beatDifference, setBeatDifference] = useState(10);
@@ -77,11 +90,6 @@ export default function ComposerScreen() {
 
   const leftFreq = baseFrequency;
   const rightFreq = baseFrequency + beatDifference;
-
-  // Binaural preset handler
-  const applyBrainwavePreset = useCallback((preset: BrainwavePreset) => {
-    setBeatDifference(BRAINWAVE_RANGES[preset].diff);
-  }, []);
 
   // Determine which preset is active (if any)
   const activeBrainwave = BRAINWAVE_PRESETS.find(
@@ -120,6 +128,68 @@ export default function ComposerScreen() {
     ? `${BRAINWAVE_LABELS[activeBrainwave]} · ${beatDifference.toFixed(1)} Hz`
     : `${beatDifference.toFixed(1)} Hz beat`;
 
+  // Live-update binaural params while playing
+  const updateBinauralIfPlaying = useCallback(
+    (base: number, diff: number, vol: number) => {
+      if (!generatorRef.current?.isPlaying()) return;
+      generatorRef.current.updateParams({
+        leftFreq: base,
+        rightFreq: base + diff,
+        amplitude: vol,
+      });
+    },
+    [],
+  );
+
+  const handleBaseFrequency = useCallback(
+    (v: number) => {
+      setBaseFrequency(v);
+      updateBinauralIfPlaying(v, beatDifference, binauralVolume);
+    },
+    [beatDifference, binauralVolume, updateBinauralIfPlaying],
+  );
+
+  const handleBeatDifference = useCallback(
+    (v: number) => {
+      setBeatDifference(v);
+      updateBinauralIfPlaying(baseFrequency, v, binauralVolume);
+    },
+    [baseFrequency, binauralVolume, updateBinauralIfPlaying],
+  );
+
+  const handleBinauralVolume = useCallback(
+    (v: number) => {
+      setBinauralVolume(v);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, v);
+    },
+    [baseFrequency, beatDifference, updateBinauralIfPlaying],
+  );
+
+  const handleBrainwavePreset = useCallback(
+    (preset: BrainwavePreset) => {
+      const diff = BRAINWAVE_RANGES[preset].diff;
+      setBeatDifference(diff);
+      updateBinauralIfPlaying(baseFrequency, diff, binauralVolume);
+    },
+    [baseFrequency, binauralVolume, updateBinauralIfPlaying],
+  );
+
+  // Start / stop session
+  const toggleSession = useCallback(async () => {
+    const gen = getGenerator();
+    if (isPlaying) {
+      await gen.stop();
+      setIsPlaying(false);
+    } else {
+      await gen.play({
+        leftFreq: baseFrequency,
+        rightFreq: baseFrequency + beatDifference,
+        amplitude: binauralVolume,
+      });
+      setIsPlaying(true);
+    }
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, getGenerator]);
+
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -148,7 +218,7 @@ export default function ComposerScreen() {
           <PrimarySlider
             label="Base Frequency"
             value={baseFrequency}
-            onValueChange={setBaseFrequency}
+            onValueChange={handleBaseFrequency}
             min={80}
             max={500}
             step={1}
@@ -159,7 +229,7 @@ export default function ComposerScreen() {
           <PrimarySlider
             label="Beat Difference"
             value={beatDifference}
-            onValueChange={setBeatDifference}
+            onValueChange={handleBeatDifference}
             min={0.5}
             max={40}
             step={0.5}
@@ -175,7 +245,7 @@ export default function ComposerScreen() {
                 key={preset}
                 title={BRAINWAVE_LABELS[preset]}
                 variant={activeBrainwave === preset ? 'filled' : 'ghost'}
-                onPress={() => applyBrainwavePreset(preset)}
+                onPress={() => handleBrainwavePreset(preset)}
                 style={styles.presetButton}
               />
             ))}
@@ -187,7 +257,7 @@ export default function ComposerScreen() {
           <PrimarySlider
             label="Binaural Volume"
             value={binauralVolume}
-            onValueChange={setBinauralVolume}
+            onValueChange={handleBinauralVolume}
             min={0}
             max={1}
             step={0.01}
@@ -300,8 +370,9 @@ export default function ComposerScreen() {
         {/* ── Playback Controls ──────────────────────────────────── */}
         <View style={styles.buttonRow}>
           <PrimaryButton
-            title="Start Session"
-            onPress={() => Alert.alert('Coming Soon', 'Session playback will be wired in the next task.')}
+            title={isPlaying ? 'Stop Session' : 'Start Session'}
+            variant={isPlaying ? 'outline' : 'filled'}
+            onPress={toggleSession}
             style={styles.buttonFlex}
           />
         </View>

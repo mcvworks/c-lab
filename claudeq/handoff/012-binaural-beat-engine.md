@@ -1,0 +1,32 @@
+# Handoff
+- Task: 012 — Binaural Beat Engine
+- Status: done
+- Summary: Implemented stereo binaural beat generation and wired it to the Composer screen. Left and right ears play independent sine frequencies; the perceived beat is their difference. All parameter changes update live during playback. Start/Stop button replaces the placeholder alert.
+- Files Changed:
+  - `src/audio/generateBinauralSamples.ts` — stereo sample generation (left/right sine at independent frequencies)
+  - `src/audio/encodeWavStereo.ts` — 16-bit stereo WAV encoder for native playback
+  - `src/audio/BinauralGenerator.ts` — cross-platform stereo playback class (Web Audio API + expo-av)
+  - `src/audio/index.ts` — barrel exports for new modules
+  - `app/(tabs)/composer.tsx` — wired binaural controls to live playback, Start/Stop session toggle
+  - `claudeq/queue/012-binaural-beat-engine.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Navigate to Composer tab
+  - Tap "Start Session" — binaural tone should play through headphones
+  - Verify left and right ears have different pitches (put one earbud in at a time)
+  - Adjust Base Frequency slider while playing — tone updates live
+  - Adjust Beat Difference slider while playing — perceived beat rate changes
+  - Tap brainwave presets (Delta/Theta/Alpha/Beta) while playing — beat difference snaps and audio updates
+  - Adjust Binaural Volume slider — volume changes smoothly
+  - Tap "Stop Session" — audio stops cleanly with no click/pop
+  - Tap "Start Session" again — resumes cleanly
+- Blockers: None
+- Next Recommended Task: 013 (ambient layer audio engine / noise-based ambient playback)
+- Notes:
+  - BinauralGenerator is separate from ToneGenerator — binaural needs stereo, Explore/Cymatics use mono
+  - Safe default volume: 50% (0.5 amplitude)
+  - Buffer loop length adapts to beat frequency for seamless stereo looping
+  - 50ms fade-out on stop prevents audio artifacts
+  - Web Audio uses stereo AudioBuffer with GainNode; native uses stereo WAV temp files via expo-av
+  - Ambient layers and session timer/duration are not yet wired (separate tasks)

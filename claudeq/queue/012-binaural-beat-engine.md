@@ -1,7 +1,7 @@
 ---
 task_id: "012"
 title: Binaural Beat Engine
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -20,10 +20,10 @@ Implement the actual binaural beat generation logic.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Functional binaural beat generation
-- [ ] Wired to Composer controls
-- [ ] Stereo L/R frequencies independently controllable
-- [ ] Clean start/stop with no audio artifacts
-- [ ] Safe volume defaults
+- [x] Functional binaural beat generation
+- [x] Wired to Composer controls
+- [x] Stereo L/R frequencies independently controllable
+- [x] Clean start/stop with no audio artifacts
+- [x] Safe volume defaults
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote

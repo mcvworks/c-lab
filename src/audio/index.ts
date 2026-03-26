@@ -1,6 +1,10 @@
 export { ToneGenerator } from './ToneGenerator';
+export { BinauralGenerator } from './BinauralGenerator';
+export type { BinauralParams } from './BinauralGenerator';
 export { generateSamples } from './generateSamples';
 export { generateNoiseSamples } from './generateNoiseSamples';
+export { generateBinauralSamples } from './generateBinauralSamples';
 export { encodeWavBase64 } from './encodeWav';
+export { encodeWavStereoBase64 } from './encodeWavStereo';
 export type { ToneParams, AudioParams, WaveformType, NoiseType, SourceMode } from './types';
 export { SAMPLE_RATE, DEFAULT_TONE } from './types';
