@@ -1,7 +1,7 @@
 ---
 task_id: "018"
 title: Settings Screen and Safety Copy
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---

@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
 import HeadphoneTest from '@/src/components/HeadphoneTest';
@@ -12,18 +12,98 @@ export default function SettingsScreen() {
         <Text style={styles.subtitle}>Preferences & information</Text>
       </View>
 
+      {/* Audio Safety */}
       <Card style={styles.card}>
         <Text style={styles.sectionLabel}>Audio Safety</Text>
         <Text style={styles.body}>
-          Use caution with prolonged exposure to loud tones. Keep volume at a comfortable level.
-          Binaural beats work best with stereo headphones.
+          Protect your hearing by keeping volume at a comfortable level,
+          especially during extended listening sessions. If you experience
+          discomfort, ringing, or fatigue, lower the volume or take a break.
+        </Text>
+        <View style={styles.divider} />
+        <Text style={styles.bodyBold}>Headphone use</Text>
+        <Text style={styles.body}>
+          Binaural beats require stereo headphones to produce the intended
+          auditory effect. For the best experience across all features, use
+          quality over-ear or in-ear headphones.
+        </Text>
+        <View style={styles.divider} />
+        <Text style={styles.bodyBold}>Volume guidance</Text>
+        <Text style={styles.bulletItem}>
+          {'\u2022'} Start at a low volume and increase gradually.
+        </Text>
+        <Text style={styles.bulletItem}>
+          {'\u2022'} If others nearby can hear your headphones, the volume is likely too high.
+        </Text>
+        <Text style={styles.bulletItem}>
+          {'\u2022'} Take regular breaks during long sessions.
         </Text>
       </Card>
 
+      {/* Headphone Stereo Test */}
       <HeadphoneTest />
 
+      {/* About Binaural Beats */}
       <Card style={styles.card}>
-        <Text style={styles.sectionLabel}>App Info</Text>
+        <Text style={styles.sectionLabel}>About Binaural Beats</Text>
+        <Text style={styles.body}>
+          A binaural beat is an auditory perception that occurs when two slightly
+          different frequencies are presented to each ear through headphones. The
+          brain perceives a third tone at the difference between the two
+          frequencies.
+        </Text>
+        <View style={styles.divider} />
+        <Text style={styles.body}>
+          For example, a 200 Hz tone in the left ear and a 210 Hz tone in the
+          right ear produces a perceived 10 Hz binaural beat.
+        </Text>
+        <View style={styles.divider} />
+        <Text style={styles.bodyMuted}>
+          Resonance Lab is an exploratory sound tool. It does not make medical,
+          therapeutic, or neurological claims. Binaural beats are presented here
+          for personal exploration and creative use.
+        </Text>
+      </Card>
+
+      {/* Export Quality */}
+      <Card style={styles.card}>
+        <Text style={styles.sectionLabel}>Export</Text>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Format</Text>
+          <Text style={styles.rowValue}>WAV</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Sample Rate</Text>
+          <Text style={styles.rowValue}>44,100 Hz</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Bit Depth</Text>
+          <Text style={styles.rowValue}>16-bit</Text>
+        </View>
+        <Text style={styles.footnote}>
+          Additional format and quality options in a future update.
+        </Text>
+      </Card>
+
+      {/* Appearance */}
+      <Card style={styles.card}>
+        <Text style={styles.sectionLabel}>Appearance</Text>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Theme</Text>
+          <Text style={styles.rowValue}>Dark</Text>
+        </View>
+        <Text style={styles.footnote}>
+          Additional themes coming in a future update.
+        </Text>
+      </Card>
+
+      {/* App Info */}
+      <Card style={styles.card}>
+        <Text style={styles.sectionLabel}>About</Text>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>App</Text>
+          <Text style={styles.rowValue}>Resonance Lab</Text>
+        </View>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>Version</Text>
           <Text style={styles.rowValue}>1.0.0</Text>
@@ -32,16 +112,14 @@ export default function SettingsScreen() {
           <Text style={styles.rowLabel}>Build</Text>
           <Text style={styles.rowValue}>MVP</Text>
         </View>
-      </Card>
-
-      <Card style={styles.card}>
-        <Text style={styles.sectionLabel}>Appearance</Text>
-        <Text style={styles.placeholder}>Theme selection coming soon</Text>
-      </Card>
-
-      <Card style={styles.card}>
-        <Text style={styles.sectionLabel}>Export</Text>
-        <Text style={styles.placeholder}>Export quality settings coming soon</Text>
+        <View style={styles.divider} />
+        <Text style={styles.bodyMuted}>
+          Hear it. See it. Shape it.
+        </Text>
+        <Text style={[styles.bodyMuted, { marginTop: spacing.xs }]}>
+          An interactive sound lab for exploring tones, frequencies,
+          visualizations, and ambient soundscapes.
+        </Text>
       </Card>
     </Screen>
   );
@@ -79,6 +157,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
+  bodyBold: {
+    fontSize: typography.sm,
+    color: colors.textPrimary,
+    fontWeight: typography.medium,
+    marginBottom: spacing.xs,
+  },
+  bodyMuted: {
+    fontSize: typography.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  bulletItem: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    paddingLeft: spacing.sm,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.sm,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -93,9 +194,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: typography.medium,
   },
-  placeholder: {
-    fontSize: typography.sm,
+  footnote: {
+    fontSize: typography.xs,
     color: colors.textMuted,
-    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
   },
 });

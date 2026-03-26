@@ -1,0 +1,19 @@
+# Handoff
+- Task: 018 — Settings Screen and Safety Copy
+- Status: done
+- Summary: Enhanced Settings screen with comprehensive audio safety guidance, binaural beat educational copy (no medical claims), export quality info, theme placeholder, and app about section.
+- Files Changed:
+  - `app/(tabs)/settings.tsx` — rewrote with full safety copy, binaural info, export details, appearance, and about sections
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open the app and navigate to Settings tab
+  - Verify Audio Safety card has volume guidance, headphone advice, and bullet points
+  - Verify About Binaural Beats card explains the concept neutrally with no medical claims
+  - Verify Export card shows WAV / 44100 Hz / 16-bit
+  - Verify Appearance card shows Dark theme with "coming soon" note
+  - Verify About card shows app name, version, build, and tagline
+  - Verify Headphone Test component still renders between safety and binaural sections
+- Blockers: none
+- Next Recommended Task: 019 or 020 (MVP cleanup/launch)
+- Notes: All copy is neutral and educational. No therapeutic, medical, or neurological claims. Disclaimer is present in the binaural beats section.
