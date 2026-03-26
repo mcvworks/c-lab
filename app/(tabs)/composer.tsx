@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BinauralGenerator } from '@/src/audio';
+import { BinauralGenerator, AmbientGenerator } from '@/src/audio';
+import type { AmbientLayerConfig } from '@/src/audio';
 import {
   Screen,
   Card,
@@ -70,6 +71,15 @@ export default function ComposerScreen() {
     return generatorRef.current;
   }, []);
 
+  // Ambient generator (singleton per component mount)
+  const ambientRef = useRef<AmbientGenerator | null>(null);
+  const getAmbient = useCallback(() => {
+    if (!ambientRef.current) {
+      ambientRef.current = new AmbientGenerator();
+    }
+    return ambientRef.current;
+  }, []);
+
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -104,23 +114,51 @@ export default function ComposerScreen() {
     }
     const usedTypes = new Set(layers.map((l) => l.type));
     const available = AMBIENT_TYPES.find((t) => !usedTypes.has(t)) ?? 'rain';
-    setLayers((prev) => [...prev, { id: nextLayerId++, type: available, volume: 0.4, enabled: true }]);
+    setLayers((prev) => {
+      const updated = [...prev, { id: nextLayerId++, type: available, volume: 0.4, enabled: true }];
+      if (ambientRef.current?.isPlaying()) {
+        ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
+      }
+      return updated;
+    });
   }, [layers]);
 
   const removeLayer = useCallback((id: number) => {
-    setLayers((prev) => prev.filter((l) => l.id !== id));
+    setLayers((prev) => {
+      const updated = prev.filter((l) => l.id !== id);
+      if (ambientRef.current?.isPlaying()) {
+        ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
+      }
+      return updated;
+    });
   }, []);
 
   const updateLayerVolume = useCallback((id: number, volume: number) => {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, volume } : l)));
+    if (ambientRef.current?.isPlaying()) {
+      ambientRef.current.setLayerVolume(id, volume);
+    }
   }, []);
 
   const updateLayerType = useCallback((id: number, type: AmbientType) => {
-    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, type } : l)));
+    setLayers((prev) => {
+      const updated = prev.map((l) => (l.id === id ? { ...l, type } : l));
+      // Type change requires full layer re-sync (different filter chain)
+      if (ambientRef.current?.isPlaying()) {
+        ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
+      }
+      return updated;
+    });
   }, []);
 
   const toggleLayer = useCallback((id: number) => {
-    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l)));
+    setLayers((prev) => {
+      const updated = prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l));
+      if (ambientRef.current?.isPlaying()) {
+        ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
+      }
+      return updated;
+    });
   }, []);
 
   // Beat difference badge
@@ -177,18 +215,22 @@ export default function ComposerScreen() {
   // Start / stop session
   const toggleSession = useCallback(async () => {
     const gen = getGenerator();
+    const ambient = getAmbient();
     if (isPlaying) {
-      await gen.stop();
+      await Promise.all([gen.stop(), ambient.stop()]);
       setIsPlaying(false);
     } else {
-      await gen.play({
-        leftFreq: baseFrequency,
-        rightFreq: baseFrequency + beatDifference,
-        amplitude: binauralVolume,
-      });
+      await Promise.all([
+        gen.play({
+          leftFreq: baseFrequency,
+          rightFreq: baseFrequency + beatDifference,
+          amplitude: binauralVolume,
+        }),
+        ambient.start(layers as AmbientLayerConfig[]),
+      ]);
       setIsPlaying(true);
     }
-  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, getGenerator]);
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, layers, getGenerator, getAmbient]);
 
   return (
     <Screen>

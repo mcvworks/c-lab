@@ -1,0 +1,34 @@
+# Handoff
+- Task: 013 — Ambient Layer System v1
+- Status: done
+- Summary: Built an AmbientGenerator audio engine that produces distinct noise-based ambient textures (rain, ocean, wind, forest, fire) using Web Audio API filters and LFO modulation. Wired it into the Composer screen so ambient layers play/stop alongside the binaural beat, with live volume updates, enable/disable toggles, type switching, and add/remove all syncing audio in real time.
+- Files Changed:
+  - `src/audio/AmbientGenerator.ts` — new ambient layer audio engine (web: filtered noise + LFO modulation per type; native: expo-av with noise samples)
+  - `src/audio/index.ts` — barrel exports for AmbientGenerator and its types
+  - `app/(tabs)/composer.tsx` — wired AmbientGenerator alongside BinauralGenerator; layer CRUD operations now sync audio when session is active
+  - `claudeq/queue/013-ambient-layer-system.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Navigate to Composer tab
+  - Tap "Start Session" — binaural tone AND default rain layer should play
+  - Adjust the rain layer volume slider — volume changes smoothly
+  - Toggle the rain layer OFF/ON — audio mutes/unmutes
+  - Change the layer type (e.g. rain → ocean) — sound character changes (ocean has slow wave-like modulation)
+  - Add a second layer (e.g. wind) — both layers mix together with the binaural beat
+  - Remove a layer — its audio stops cleanly
+  - Stop Session — all audio (binaural + ambient) stops with no clicks
+  - Test each ambient type: rain (bright hiss), ocean (low rumble with waves), wind (mid-range with swell), forest (airy high-pass), fire (low crackle with rapid modulation)
+- Blockers: None
+- Next Recommended Task: 014 (session timer / duration controls, or preset save/load)
+- Notes:
+  - Each ambient type uses a white noise buffer shaped by different BiquadFilter configurations and optional LFO amplitude modulation
+  - Rain: bandpass 3kHz — bright, hissy texture
+  - Ocean: lowpass 500Hz + slow 0.08Hz LFO — rumbling wave rhythm
+  - Wind: bandpass 800Hz + 0.12Hz LFO — mid-range swell
+  - Forest: highpass 2.5kHz + lowpass 6kHz — gentle, airy
+  - Fire: bandpass 600Hz + highpass 150Hz + fast 2.5Hz LFO — crackling
+  - All volume changes use 50ms linear ramps for click-free transitions
+  - Type changes during playback tear down and recreate the layer's filter chain
+  - AmbientGenerator and BinauralGenerator use separate AudioContexts; both output to system audio independently
+  - Native platform support follows same expo-av pattern as BinauralGenerator
