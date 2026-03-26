@@ -1,7 +1,7 @@
 ---
 task_id: "015"
 title: Library Screen
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -22,9 +22,9 @@ Build the Library screen for saved presets and recent exported items.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Functional Library screen
-- [ ] Connected to preset persistence
-- [ ] All CRUD actions work (open, duplicate, rename, delete)
-- [ ] Empty state handled gracefully
+- [x] Functional Library screen
+- [x] Connected to preset persistence
+- [x] All CRUD actions work (open, duplicate, rename, delete)
+- [x] Empty state handled gracefully
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote

@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
@@ -31,7 +31,9 @@ function presetSummary(preset: Preset): string {
 
 function PresetCard({ preset }: { preset: Preset }) {
   const router = useRouter();
-  const { deletePreset, duplicatePreset, setPendingLoad } = usePresetStore();
+  const { deletePreset, duplicatePreset, renamePreset, setPendingLoad } = usePresetStore();
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(preset.name);
 
   const handleLoad = useCallback(() => {
     setPendingLoad(preset);
@@ -57,11 +59,36 @@ function PresetCard({ preset }: { preset: Preset }) {
     ]);
   }, [preset.id, preset.name, deletePreset]);
 
+  const handleRename = useCallback(() => {
+    setEditName(preset.name);
+    setEditing(true);
+  }, [preset.name]);
+
+  const handleRenameSubmit = useCallback(() => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== preset.name) {
+      renamePreset(preset.id, trimmed);
+    }
+    setEditing(false);
+  }, [editName, preset.id, preset.name, renamePreset]);
+
   return (
     <Card style={styles.presetCard}>
       <View style={styles.presetHeader}>
         <View style={styles.presetInfo}>
-          <Text style={styles.presetName} numberOfLines={1}>{preset.name}</Text>
+          {editing ? (
+            <TextInput
+              style={styles.renameInput}
+              value={editName}
+              onChangeText={setEditName}
+              onBlur={handleRenameSubmit}
+              onSubmitEditing={handleRenameSubmit}
+              autoFocus
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.presetName} numberOfLines={1}>{preset.name}</Text>
+          )}
           <View style={styles.metaRow}>
             <View style={[styles.typeBadge, preset.type === 'composer' && styles.composerBadge]}>
               <Text style={[styles.typeBadgeText, preset.type === 'composer' && styles.composerBadgeText]}>
@@ -78,6 +105,9 @@ function PresetCard({ preset }: { preset: Preset }) {
         <Pressable style={[styles.actionButton, styles.loadButton]} onPress={handleLoad}>
           <Text style={styles.loadText}>Load</Text>
         </Pressable>
+        <Pressable style={styles.actionButton} onPress={handleRename}>
+          <Text style={styles.actionText}>Rename</Text>
+        </Pressable>
         <Pressable style={styles.actionButton} onPress={handleDuplicate}>
           <Text style={styles.actionText}>Duplicate</Text>
         </Pressable>
@@ -86,6 +116,20 @@ function PresetCard({ preset }: { preset: Preset }) {
         </Pressable>
       </View>
     </Card>
+  );
+}
+
+function ExportsPlaceholder() {
+  return (
+    <View style={styles.exportsSection}>
+      <Text style={styles.sectionTitle}>Recent Exports</Text>
+      <Card style={styles.emptyState}>
+        <Text style={styles.emptyTitle}>No exports yet</Text>
+        <Text style={styles.emptyBody}>
+          Export audio from the Composer to find your files here.
+        </Text>
+      </Card>
+    </View>
   );
 }
 
@@ -122,6 +166,7 @@ export default function LibraryScreen() {
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
+          ListFooterComponent={<ExportsPlaceholder />}
         />
       )}
     </Screen>
@@ -246,5 +291,24 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: colors.danger,
+  },
+  renameInput: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+  },
+  exportsSection: {
+    marginTop: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
 });

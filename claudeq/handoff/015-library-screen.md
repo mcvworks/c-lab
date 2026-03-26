@@ -1,0 +1,21 @@
+# Handoff
+- Task: 015 — Library Screen
+- Status: done
+- Summary: Added rename action and recent exports placeholder to the existing Library screen. Task 014 had already built the core Library with load, duplicate, delete, and empty state. This task completed the remaining CRUD (rename via inline TextInput) and added a "Recent Exports" placeholder section.
+- Files Changed:
+  - `app/(tabs)/library.tsx` — added rename UI (inline TextInput), ExportsPlaceholder component, related styles
+  - `claudeq/queue/015-library-screen.md` — marked done
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open Library tab
+  - Save a preset from Explore or Composer, verify it appears
+  - Tap Rename — name becomes editable inline, submit to confirm
+  - Tap Duplicate — copy appears below original
+  - Tap Delete — confirmation dialog, then removed
+  - Tap Load — navigates to correct screen with preset loaded
+  - With presets present, scroll down to see "Recent Exports" placeholder
+  - With no presets, empty state shows gracefully
+- Blockers: none
+- Next Recommended Task: 016 or Settings screen
+- Notes: Recent Exports section is a placeholder until audio export is implemented.
