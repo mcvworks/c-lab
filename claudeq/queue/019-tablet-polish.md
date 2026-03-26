@@ -1,8 +1,7 @@
 ---
-failure_reason: Claude exited with code 143
 priority: 0
 requires_approval: false
-status: queued
+status: done
 task_id: 019
 title: Tablet Polish Pass
 ---
@@ -22,9 +21,9 @@ Improve the app experience specifically for iPad/tablet layouts.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Better tablet responsiveness across key screens
-- [ ] Layout improvements for larger screens
-- [ ] Phone layouts still work correctly
-- [ ] No stretched or awkward layouts on tablet
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Better tablet responsiveness across key screens
+- [x] Layout improvements for larger screens
+- [x] Phone layouts still work correctly
+- [x] No stretched or awkward layouts on tablet
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

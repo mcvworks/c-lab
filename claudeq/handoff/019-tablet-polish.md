@@ -1,0 +1,27 @@
+# Handoff
+- Task: 019 — Tablet Polish Pass
+- Status: done
+- Summary: Added centralized responsive hook and updated all five screens with tablet-optimized layouts. Content is max-width constrained and centered on larger screens. Multi-column layouts used for controls, visualizations, and preset grids.
+- Files Changed:
+  - `src/hooks/useResponsive.ts` — new hook providing isTablet, contentWidth, vizHeight, plateSize, gridColumns
+  - `src/components/Screen.tsx` — max-width constraint + increased padding on tablet
+  - `app/(tabs)/explore.tsx` — side-by-side waveform/spectrum visualizations on tablet
+  - `app/(tabs)/cymatics.tsx` — side-by-side frequency + plate/material controls on tablet
+  - `app/(tabs)/composer.tsx` — session settings + playback controls side-by-side on tablet
+  - `app/(tabs)/library.tsx` — 2-column preset card grid on tablet via FlatList numColumns
+  - `app/(tabs)/settings.tsx` — Export + Appearance cards side-by-side on tablet, added ScrollView
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Run the app on a phone-sized viewport — layouts should look identical to before
+  - Run on iPad or tablet-sized viewport (>=768px wide):
+    - Screen content should be centered with max-width ~720px
+    - Explore: waveform and spectrum cards side by side
+    - Cymatics: frequency and plate/material cards side by side
+    - Composer: session and playback sections side by side
+    - Library: preset cards in a 2-column grid
+    - Settings: Export and Appearance cards side by side
+  - Resize browser window (web) to test breakpoint transitions
+- Blockers: none
+- Next Recommended Task: 020 (MVP cleanup/launch)
+- Notes: All tablet layouts degrade gracefully to single-column on phone. The useResponsive hook centralizes the 768px breakpoint so it can be adjusted in one place.

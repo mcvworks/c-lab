@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
+import { usePresetStore } from '@/src/state/usePresetStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
+import type { ExploreSettings } from '@/src/types/preset';
 import {
   Screen,
   Card,
@@ -11,6 +13,7 @@ import {
   PrimarySlider,
   SegmentedControl,
   SandPlateView,
+  SavePresetModal,
 } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
@@ -52,6 +55,30 @@ export default function CymaticsScreen() {
   } = useAudioStore();
 
   const { plateSize, isTablet } = useResponsive();
+
+  // Preset save
+  const savePreset = usePresetStore((s) => s.savePreset);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  const handleSavePreset = useCallback(async (name: string) => {
+    const settings: ExploreSettings = {
+      sourceMode: 'tone',
+      frequency,
+      amplitude,
+      waveform: 'sine',
+      noiseType: 'white',
+    };
+    await savePreset(name, 'explore', settings);
+    setShowSaveModal(false);
+    Alert.alert('Saved', `Preset "${name || 'Cymatics Preset'}" saved to Library.`);
+  }, [frequency, amplitude, savePreset]);
+
+  // Ensure presets are loaded
+  const presetLoaded = usePresetStore((s) => s.loaded);
+  const loadPresets = usePresetStore((s) => s.loadPresets);
+  useEffect(() => {
+    if (!presetLoaded) loadPresets();
+  }, [presetLoaded, loadPresets]);
 
   const handlePlay = useCallback(async () => {
     try {
@@ -214,7 +241,7 @@ export default function CymaticsScreen() {
           </IconButton>
           <IconButton
             variant="filled"
-            onPress={() => Alert.alert('Save', 'Preset save coming soon')}
+            onPress={() => setShowSaveModal(true)}
           >
             <Text style={styles.iconFilledText}>♡</Text>
           </IconButton>
@@ -233,6 +260,13 @@ export default function CymaticsScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <SavePresetModal
+        visible={showSaveModal}
+        defaultName={`Cymatics ${Math.round(frequency)} Hz`}
+        onSave={handleSavePreset}
+        onCancel={() => setShowSaveModal(false)}
+      />
     </Screen>
   );
 }
