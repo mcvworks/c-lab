@@ -25,5 +25,5 @@ Allow the user to save and reload sound setups locally.
 - [x] Functional save/load UX
 - [x] Presets persist across app restarts
 - [x] Duplicate and delete actions work
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

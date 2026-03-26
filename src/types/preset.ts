@@ -34,3 +34,16 @@ export interface Preset {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface ExportRecord {
+  id: string;
+  name: string;
+  fileName: string;
+  /** URI or blob URL pointing to the exported WAV file */
+  uri: string;
+  durationSeconds: number;
+  format: 'wav';
+  sizeBytes: number;
+  settings: ComposerSettings;
+  createdAt: number;
+}

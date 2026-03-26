@@ -1,7 +1,7 @@
 ---
 task_id: "016"
 title: Export System v1
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -20,9 +20,9 @@ Allow users to export generated sessions/audio files locally.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Working export flow
-- [ ] Library updated with export history
-- [ ] Export success/failure feedback shown
-- [ ] Files named sensibly
-- [ ] Changes committed with clear message referencing task number
-- [ ] Changes pushed to remote
+- [x] Working export flow
+- [x] Library updated with export history
+- [x] Export success/failure feedback shown
+- [x] Files named sensibly
+- [x] Changes committed with clear message referencing task number
+- [x] Changes pushed to remote

@@ -1,0 +1,30 @@
+# Handoff
+- Task: 016 — Export System v1
+- Status: done
+- Summary: Implemented offline audio export for Composer sessions. Users can render their binaural beat + ambient layer sessions to stereo WAV files. The system generates audio offline with proper fade in/out, software biquad filters matching the realtime ambient recipes, and LFO modulation. Exports appear in the Library screen with download/delete actions.
+- Files Changed:
+  - `src/types/preset.ts` — added ExportRecord interface
+  - `src/state/useExportStore.ts` — new Zustand store for export metadata persistence
+  - `src/audio/exportEngine.ts` — new offline rendering engine (chunked stereo WAV generation with biquad filters, fade envelopes, binaural + ambient mixing)
+  - `src/audio/index.ts` — exported renderSession, ExportProgress, ExportResult
+  - `app/(tabs)/composer.tsx` — added Export WAV button with progress modal
+  - `app/(tabs)/library.tsx` — replaced ExportsPlaceholder with real ExportsSection showing export cards with download/delete
+  - `claudeq/queue/016-export-system.md` — marked done
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open Composer, configure a session (any duration — start with short like 1m for quick test)
+  - Tap "Export WAV" — progress modal appears
+  - On completion: web triggers file download, alert confirms success
+  - Open Library tab — "Recent Exports" section shows the export with WAV badge, duration, file size
+  - Tap Download — re-downloads the file (web)
+  - Tap Delete — confirmation dialog, then removed from list
+  - Exports persist across app reloads (AsyncStorage)
+- Blockers: none
+- Next Recommended Task: 017 (Settings screen) or further polish
+- Notes:
+  - Export renders at 44.1 kHz 16-bit stereo
+  - Ambient layers use software biquad filters matching the Web Audio filter recipes
+  - Long sessions (30-60 min) produce large files and take time — the progress modal keeps the user informed
+  - Web uses Blob URLs + download trigger; native writes to documents directory
+  - Chunk-based rendering (1 second chunks) keeps memory bounded

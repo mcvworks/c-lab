@@ -8,5 +8,7 @@ export { generateNoiseSamples } from './generateNoiseSamples';
 export { generateBinauralSamples } from './generateBinauralSamples';
 export { encodeWavBase64 } from './encodeWav';
 export { encodeWavStereoBase64 } from './encodeWavStereo';
+export { renderSession } from './exportEngine';
+export type { ExportProgress, ExportResult } from './exportEngine';
 export type { ToneParams, AudioParams, WaveformType, NoiseType, SourceMode } from './types';
 export { SAMPLE_RATE, DEFAULT_TONE } from './types';

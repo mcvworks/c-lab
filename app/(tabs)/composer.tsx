@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BinauralGenerator, AmbientGenerator } from '@/src/audio';
-import type { AmbientLayerConfig } from '@/src/audio';
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BinauralGenerator, AmbientGenerator, renderSession } from '@/src/audio';
+import type { AmbientLayerConfig, ExportProgress } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
-import type { ComposerSettings } from '@/src/types/preset';
+import { useExportStore } from '@/src/state/useExportStore';
+import type { ComposerSettings, ExportRecord } from '@/src/types/preset';
 import {
   Screen,
   Card,
@@ -104,6 +105,63 @@ export default function ComposerScreen() {
   // Save modal
   const savePreset = usePresetStore((s) => s.savePreset);
   const [showSaveModal, setShowSaveModal] = useState(false);
+
+  // Export state
+  const addExport = useExportStore((s) => s.addExport);
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+
+  const handleExport = useCallback(async () => {
+    const settings: ComposerSettings = {
+      baseFrequency,
+      beatDifference,
+      binauralVolume,
+      layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
+      duration,
+      fadeIn,
+      fadeOut,
+    };
+
+    setExporting(true);
+    setExportProgress(0);
+
+    try {
+      const exportName = `${beatDifference.toFixed(0)}Hz binaural ${duration}m`;
+      const result = await renderSession(settings, exportName, (p: ExportProgress) => {
+        setExportProgress(p.progress);
+      });
+
+      const record: ExportRecord = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        name: exportName,
+        fileName: result.fileName,
+        uri: result.uri,
+        durationSeconds: duration * 60,
+        format: 'wav',
+        sizeBytes: result.sizeBytes,
+        settings,
+        createdAt: Date.now(),
+      };
+
+      await addExport(record);
+      setExporting(false);
+
+      if (Platform.OS === 'web') {
+        // Trigger download on web
+        const a = document.createElement('a');
+        a.href = result.uri;
+        a.download = result.fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      Alert.alert('Export Complete', `"${result.fileName}" saved successfully.`);
+    } catch (error) {
+      setExporting(false);
+      Alert.alert('Export Failed', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [baseFrequency, beatDifference, binauralVolume, layers, duration, fadeIn, fadeOut, addExport]);
 
   const handleSavePreset = useCallback(async (name: string) => {
     const settings: ComposerSettings = {
@@ -458,6 +516,16 @@ export default function ComposerScreen() {
           />
         </View>
 
+        <View style={styles.buttonRow}>
+          <PrimaryButton
+            title={exporting ? 'Exporting…' : 'Export WAV'}
+            variant="outline"
+            onPress={handleExport}
+            style={styles.buttonFlex}
+            disabled={exporting}
+          />
+        </View>
+
         <View style={styles.iconRow}>
           <IconButton
             variant="filled"
@@ -487,6 +555,19 @@ export default function ComposerScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Export progress overlay */}
+      <Modal visible={exporting} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.progressCard}>
+            <Text style={styles.progressTitle}>Exporting Audio…</Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${Math.round(exportProgress * 100)}%` }]} />
+            </View>
+            <Text style={styles.progressText}>{Math.round(exportProgress * 100)}%</Text>
+          </View>
+        </View>
+      </Modal>
 
       <SavePresetModal
         visible={showSaveModal}
@@ -652,5 +733,47 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: spacing.xxl,
+  },
+  // Export progress modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  progressCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  progressTitle: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 6,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
+  },
+  progressText: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    fontWeight: typography.medium,
   },
 });

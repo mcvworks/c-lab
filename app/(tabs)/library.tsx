@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
 import { usePresetStore } from '@/src/state/usePresetStore';
-import type { Preset } from '@/src/types/preset';
+import { useExportStore } from '@/src/state/useExportStore';
+import type { Preset, ExportRecord } from '@/src/types/preset';
 import type { ExploreSettings, ComposerSettings } from '@/src/types/preset';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
@@ -119,16 +120,100 @@ function PresetCard({ preset }: { preset: Preset }) {
   );
 }
 
-function ExportsPlaceholder() {
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function ExportCard({ record }: { record: ExportRecord }) {
+  const { deleteExport } = useExportStore();
+
+  const handleDownload = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const a = document.createElement('a');
+      a.href = record.uri;
+      a.download = record.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      Alert.alert('File Location', `Saved to: ${record.fileName}`);
+    }
+  }, [record]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert('Delete Export', `Delete "${record.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          if (Platform.OS === 'web') {
+            try { URL.revokeObjectURL(record.uri); } catch { /* ignore */ }
+          }
+          deleteExport(record.id);
+        },
+      },
+    ]);
+  }, [record, deleteExport]);
+
+  return (
+    <Card style={styles.presetCard}>
+      <View style={styles.presetHeader}>
+        <View style={styles.presetInfo}>
+          <Text style={styles.presetName} numberOfLines={1}>{record.name}</Text>
+          <View style={styles.metaRow}>
+            <View style={styles.exportBadge}>
+              <Text style={styles.exportBadgeText}>WAV</Text>
+            </View>
+            <Text style={styles.dateText}>{formatDate(record.createdAt)}</Text>
+          </View>
+          <Text style={styles.summary} numberOfLines={1}>
+            {formatDuration(record.durationSeconds)} · {formatFileSize(record.sizeBytes)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.actionRow}>
+        <Pressable style={[styles.actionButton, styles.loadButton]} onPress={handleDownload}>
+          <Text style={styles.loadText}>{Platform.OS === 'web' ? 'Download' : 'View'}</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={handleDelete}>
+          <Text style={[styles.actionText, styles.dangerText]}>Delete</Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+function ExportsSection() {
+  const { exports: exportRecords, loaded, loadExports } = useExportStore();
+
+  useEffect(() => {
+    if (!loaded) loadExports();
+  }, [loaded, loadExports]);
+
   return (
     <View style={styles.exportsSection}>
       <Text style={styles.sectionTitle}>Recent Exports</Text>
-      <Card style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>No exports yet</Text>
-        <Text style={styles.emptyBody}>
-          Export audio from the Composer to find your files here.
-        </Text>
-      </Card>
+      {exportRecords.length === 0 ? (
+        <Card style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>No exports yet</Text>
+          <Text style={styles.emptyBody}>
+            Export audio from the Composer to find your files here.
+          </Text>
+        </Card>
+      ) : (
+        exportRecords.map((record) => (
+          <ExportCard key={record.id} record={record} />
+        ))
+      )}
     </View>
   );
 }
@@ -152,13 +237,16 @@ export default function LibraryScreen() {
       </View>
 
       {presets.length === 0 ? (
-        <Card style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>&#9834;</Text>
-          <Text style={styles.emptyTitle}>No presets yet</Text>
-          <Text style={styles.emptyBody}>
-            Save a session from Explore or Composer to see it here.
-          </Text>
-        </Card>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Card style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>&#9834;</Text>
+            <Text style={styles.emptyTitle}>No presets yet</Text>
+            <Text style={styles.emptyBody}>
+              Save a session from Explore or Composer to see it here.
+            </Text>
+          </Card>
+          <ExportsSection />
+        </ScrollView>
       ) : (
         <FlatList
           data={presets}
@@ -166,7 +254,7 @@ export default function LibraryScreen() {
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<ExportsPlaceholder />}
+          ListFooterComponent={<ExportsSection />}
         />
       )}
     </Screen>
@@ -245,6 +333,17 @@ const styles = StyleSheet.create({
   },
   composerBadge: {
     backgroundColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  exportBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  exportBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.warning,
   },
   typeBadgeText: {
     fontSize: typography.xs,
