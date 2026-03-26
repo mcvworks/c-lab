@@ -1,7 +1,7 @@
 ---
 task_id: "010"
 title: Shared Audio State Between Explore and Cymatics
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -18,9 +18,9 @@ Create a coherent shared audio/settings layer so the app behaves consistently ac
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Cleaner shared audio/settings architecture
-- [ ] Explore and Cymatics interoperating sensibly
-- [ ] No broken playback on tab switch
-- [ ] State is modular and predictable
+- [x] Cleaner shared audio/settings architecture
+- [x] Explore and Cymatics interoperating sensibly
+- [x] No broken playback on tab switch
+- [x] State is modular and predictable
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote

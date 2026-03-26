@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { useToneGenerator } from '@/src/hooks/useToneGenerator';
+import { useAudioStore } from '@/src/state/useAudioStore';
 import {
   Screen,
   Card,
@@ -13,12 +13,11 @@ import {
   SpectrumView,
 } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
-import type { NoiseType } from '@/src/audio';
+import type { NoiseType, SourceMode, WaveformType } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
-type Waveform = (typeof WAVEFORMS)[number];
 
-const WAVEFORM_LABELS: Record<Waveform, string> = {
+const WAVEFORM_LABELS: Record<WaveformType, string> = {
   sine: 'Sine',
   square: 'Square',
   saw: 'Saw',
@@ -33,7 +32,6 @@ const NOISE_LABELS: Record<NoiseType, string> = {
 };
 
 const SOURCE_MODES = ['tone', 'noise'] as const;
-type SourceMode = (typeof SOURCE_MODES)[number];
 const SOURCE_MODE_LABELS: Record<SourceMode, string> = {
   tone: 'Tone',
   noise: 'Noise',
@@ -47,15 +45,11 @@ const NOTE_PRESETS = [
 ] as const;
 
 export default function ExploreScreen() {
-  const [sourceMode, setSourceMode] = useState<SourceMode>('tone');
-  const [frequency, setFrequency] = useState(440);
-  const [amplitude, setAmplitude] = useState(0.5);
-  const [waveform, setWaveform] = useState<Waveform>('sine');
-  const [noiseType, setNoiseType] = useState<NoiseType>('white');
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const tone = useToneGenerator();
-  const isPlayingRef = useRef(false);
+  const {
+    sourceMode, frequency, amplitude, waveform, noiseType, isPlaying,
+    setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType,
+    play, stop, reset,
+  } = useAudioStore();
 
   const { width: screenWidth } = useWindowDimensions();
   const isTablet = screenWidth >= 768;
@@ -65,53 +59,19 @@ export default function ExploreScreen() {
 
   const handlePlay = useCallback(async () => {
     try {
-      if (sourceMode === 'noise') {
-        await tone.playNoise(amplitude, noiseType);
-      } else {
-        await tone.play(frequency, amplitude, waveform);
-      }
-      setIsPlaying(true);
-      isPlayingRef.current = true;
+      await play();
     } catch (e) {
       Alert.alert('Audio Error', 'Could not start playback.');
     }
-  }, [tone, sourceMode, waveform, frequency, amplitude, noiseType]);
+  }, [play]);
 
   const handleStop = useCallback(async () => {
-    setIsPlaying(false);
-    isPlayingRef.current = false;
-    await tone.stop();
-  }, [tone]);
+    await stop();
+  }, [stop]);
 
-  const handleReset = useCallback(async () => {
-    setIsPlaying(false);
-    isPlayingRef.current = false;
-    await tone.stop();
-    setFrequency(440);
-    setAmplitude(0.5);
-    setWaveform('sine');
-    setNoiseType('white');
-  }, [tone]);
-
-  // Switch source mode — stop current playback for clean transition
-  const handleSourceModeChange = useCallback(async (mode: SourceMode) => {
-    if (isPlayingRef.current) {
-      await tone.stop();
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-    }
-    setSourceMode(mode);
-  }, [tone]);
-
-  // Update audio params live while playing
-  useEffect(() => {
-    if (!isPlayingRef.current) return;
-    if (sourceMode === 'noise') {
-      tone.updateNoiseParams(amplitude, noiseType);
-    } else {
-      tone.updateParams(frequency, amplitude, waveform);
-    }
-  }, [frequency, amplitude, waveform, noiseType, sourceMode, tone]);
+  const handleReset = useCallback(() => {
+    reset();
+  }, [reset]);
 
   const vizBadge = sourceMode === 'noise'
     ? `${NOISE_LABELS[noiseType]} noise`
@@ -165,7 +125,7 @@ export default function ExploreScreen() {
           <SegmentedControl
             options={SOURCE_MODES}
             selected={sourceMode}
-            onSelect={handleSourceModeChange}
+            onSelect={setSourceMode}
             labels={SOURCE_MODE_LABELS}
           />
         </Card>

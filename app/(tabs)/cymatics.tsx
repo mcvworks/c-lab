@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { useToneGenerator } from '@/src/hooks/useToneGenerator';
+import { useAudioStore } from '@/src/state/useAudioStore';
 import {
   Screen,
   Card,
@@ -38,15 +38,17 @@ const FREQ_PRESETS = [
 ] as const;
 
 export default function CymaticsScreen() {
-  const [frequency, setFrequency] = useState(440);
-  const [amplitude, setAmplitude] = useState(0.6);
+  // Cymatics-specific visual state (not shared)
   const [plateShape, setPlateShape] = useState<PlateShape>('circle');
   const [particleStyle, setParticleStyle] = useState<ParticleStyle>('sand');
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isFrozen, setIsFrozen] = useState(false);
 
-  const tone = useToneGenerator();
-  const isPlayingRef = useRef(false);
+  // Shared audio state
+  const {
+    frequency, amplitude, isPlaying,
+    setFrequency, setAmplitude, setWaveform, setSourceMode,
+    play, stop,
+  } = useAudioStore();
 
   const { width: screenWidth } = useWindowDimensions();
   const isTablet = screenWidth >= 768;
@@ -54,41 +56,32 @@ export default function CymaticsScreen() {
 
   const handlePlay = useCallback(async () => {
     try {
-      await tone.play(frequency, amplitude, 'sine');
-      setIsPlaying(true);
+      // Cymatics always uses sine tone mode
+      setSourceMode('tone');
+      setWaveform('sine');
+      await play();
       setIsFrozen(false);
-      isPlayingRef.current = true;
     } catch {
       Alert.alert('Audio Error', 'Could not start playback.');
     }
-  }, [tone, frequency, amplitude]);
+  }, [play, setSourceMode, setWaveform]);
 
   const handleStop = useCallback(async () => {
-    setIsPlaying(false);
-    isPlayingRef.current = false;
-    await tone.stop();
-  }, [tone]);
+    await stop();
+  }, [stop]);
 
   const handleFreeze = useCallback(() => {
     setIsFrozen((prev) => !prev);
   }, []);
 
   const handleReset = useCallback(async () => {
-    setIsPlaying(false);
+    await stop();
     setIsFrozen(false);
-    isPlayingRef.current = false;
-    await tone.stop();
     setFrequency(440);
     setAmplitude(0.6);
     setPlateShape('circle');
     setParticleStyle('sand');
-  }, [tone]);
-
-  // Update audio params live while playing
-  useEffect(() => {
-    if (!isPlayingRef.current) return;
-    tone.updateParams(frequency, amplitude, 'sine');
-  }, [frequency, amplitude, tone]);
+  }, [stop, setFrequency, setAmplitude]);
 
   const freqBadge = `${Math.round(frequency)} Hz · ${PLATE_SHAPE_LABELS[plateShape]}`;
 

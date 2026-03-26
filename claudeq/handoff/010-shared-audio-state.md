@@ -1,0 +1,27 @@
+# Handoff
+- Task: 010 — Shared Audio State Between Explore and Cymatics
+- Status: done
+- Summary: Created a Zustand store (`useAudioStore`) that manages a single shared ToneGenerator instance and all audio parameters (frequency, amplitude, waveform, sourceMode, noiseType, isPlaying). Both Explore and Cymatics tabs now read/write from this shared store instead of maintaining independent local state and separate ToneGenerator instances. Parameter setters automatically push live updates to the audio engine when playing. Cymatics-specific visual state (plateShape, particleStyle, isFrozen) remains local to that tab.
+- Files Changed:
+  - `src/state/useAudioStore.ts` — new Zustand store with shared audio state and single ToneGenerator
+  - `app/(tabs)/explore.tsx` — refactored to use useAudioStore instead of local state + useToneGenerator
+  - `app/(tabs)/cymatics.tsx` — refactored to use useAudioStore instead of local state + useToneGenerator
+  - `claudeq/queue/010-shared-audio-state.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Open Explore tab, play a tone — waveform and spectrum visualize correctly
+  - Adjust frequency/amplitude/waveform while playing — audio updates live
+  - Switch to noise mode — plays noise, switch back to tone — plays tone
+  - Switch to Cymatics tab — frequency/amplitude settings carry over from Explore
+  - Tap Vibrate on Cymatics — plays sine tone using shared audio engine
+  - Adjust frequency on Cymatics — audio updates live, sand plate pattern shifts
+  - Switch back to Explore — settings reflect what was set on Cymatics
+  - Verify no double-playback when switching tabs (single ToneGenerator instance)
+  - Reset on either tab stops playback and resets parameters
+- Blockers: None
+- Next Recommended Task: 011
+- Notes:
+  - The old `useToneGenerator` hook still exists and can be removed later or kept for standalone use cases
+  - Cymatics forces sourceMode to 'tone' and waveform to 'sine' on play, which is the correct behavior for cymatics visualization
+  - The single ToneGenerator instance means only one audio source plays at a time across all tabs
