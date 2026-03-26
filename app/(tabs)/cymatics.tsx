@@ -9,6 +9,7 @@ import {
   IconButton,
   PrimarySlider,
   SegmentedControl,
+  SandPlateView,
 } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
@@ -26,18 +27,6 @@ const PARTICLE_STYLE_LABELS: Record<ParticleStyle, string> = {
   sand: 'Sand',
   salt: 'Salt',
   metal: 'Metal',
-};
-
-const PARTICLE_COLORS: Record<ParticleStyle, string> = {
-  sand: '#d4a574',
-  salt: '#e8e8f0',
-  metal: '#8899aa',
-};
-
-const SHAPE_SIDES: Record<PlateShape, number> = {
-  circle: 64,
-  square: 4,
-  hexagon: 6,
 };
 
 const FREQ_PRESETS = [
@@ -101,103 +90,6 @@ export default function CymaticsScreen() {
     tone.updateParams(frequency, amplitude, 'sine');
   }, [frequency, amplitude, tone]);
 
-  // Generate simple nodal pattern positions for the placeholder visualization
-  const renderPlateVisualization = () => {
-    const cx = plateSize / 2;
-    const cy = plateSize / 2;
-    const r = plateSize / 2 - 8;
-    const particleColor = PARTICLE_COLORS[particleStyle];
-    const sides = SHAPE_SIDES[plateShape];
-
-    // Generate plate outline points
-    const outlinePoints: { x: number; y: number }[] = [];
-    for (let i = 0; i <= sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      outlinePoints.push({
-        x: cx + r * Math.cos(angle),
-        y: cy + r * Math.sin(angle),
-      });
-    }
-
-    // Generate nodal pattern dots based on frequency
-    const dots: { x: number; y: number; size: number; opacity: number }[] = [];
-    const nodeCount = Math.floor(frequency / 60);
-    const rings = Math.max(2, Math.min(8, Math.floor(nodeCount / 3)));
-    const dotsPerRing = Math.max(6, Math.min(24, nodeCount));
-
-    for (let ring = 1; ring <= rings; ring++) {
-      const ringR = (r * ring) / (rings + 1);
-      const ringDots = dotsPerRing + ring * 2;
-      for (let d = 0; d < ringDots; d++) {
-        const angle = (d / ringDots) * Math.PI * 2 + ring * 0.3;
-        const wobble = isPlaying && !isFrozen ? Math.sin(d * 1.5 + ring) * 3 * amplitude : 0;
-        const x = cx + (ringR + wobble) * Math.cos(angle);
-        const y = cy + (ringR + wobble) * Math.sin(angle);
-
-        // Check if point is inside the plate shape
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > r - 4) continue;
-
-        dots.push({
-          x,
-          y,
-          size: 1.5 + amplitude * 2,
-          opacity: 0.3 + amplitude * 0.5 + (isPlaying && !isFrozen ? 0.2 : 0),
-        });
-      }
-    }
-
-    return (
-      <View style={[styles.plateContainer, { width: plateSize, height: plateSize }]}>
-        {/* Plate outline */}
-        <View
-          style={[
-            styles.plateOutline,
-            {
-              width: plateSize - 4,
-              height: plateSize - 4,
-              borderRadius: plateShape === 'circle' ? plateSize / 2 : plateShape === 'hexagon' ? plateSize / 4 : radius.lg,
-              borderColor: isPlaying ? colors.accent : colors.border,
-            },
-          ]}
-        />
-
-        {/* Particle dots */}
-        {dots.map((dot, i) => (
-          <View
-            key={i}
-            style={[
-              styles.particleDot,
-              {
-                left: dot.x - dot.size / 2,
-                top: dot.y - dot.size / 2,
-                width: dot.size,
-                height: dot.size,
-                borderRadius: dot.size / 2,
-                backgroundColor: particleColor,
-                opacity: dot.opacity,
-              },
-            ]}
-          />
-        ))}
-
-        {/* Center glow when playing */}
-        {isPlaying && (
-          <View style={[styles.centerGlow, { left: cx - 30, top: cy - 30 }]} />
-        )}
-
-        {/* Frozen indicator */}
-        {isFrozen && (
-          <View style={styles.frozenBadge}>
-            <Text style={styles.frozenText}>FROZEN</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
   const freqBadge = `${Math.round(frequency)} Hz · ${PLATE_SHAPE_LABELS[plateShape]}`;
 
   return (
@@ -212,7 +104,22 @@ export default function CymaticsScreen() {
             <Text style={styles.vizBadge}>{freqBadge}</Text>
           </View>
           <View style={styles.plateWrapper}>
-            {renderPlateVisualization()}
+            <SandPlateView
+              width={plateSize}
+              height={plateSize}
+              frequency={frequency}
+              amplitude={amplitude}
+              plateShape={plateShape}
+              particleStyle={particleStyle}
+              isPlaying={isPlaying}
+              isFrozen={isFrozen}
+            />
+            {/* Frozen indicator overlay */}
+            {isFrozen && (
+              <View style={styles.frozenBadge}>
+                <Text style={styles.frozenText}>FROZEN</Text>
+              </View>
+            )}
           </View>
         </Card>
 
@@ -366,32 +273,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     paddingVertical: spacing.md,
-  },
-  plateContainer: {
     position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  plateOutline: {
-    position: 'absolute',
-    borderWidth: 1.5,
-    top: 2,
-    left: 2,
-  },
-  particleDot: {
-    position: 'absolute',
-  },
-  centerGlow: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.accentGlow,
   },
   frozenBadge: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
+    bottom: spacing.md + 8,
+    right: spacing.sm,
     backgroundColor: colors.surfaceElevated,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,

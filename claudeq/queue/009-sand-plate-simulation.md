@@ -1,7 +1,7 @@
 ---
 task_id: "009"
 title: Digital Sand Plate Simulation v1
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -21,10 +21,10 @@ Implement the first digital cymatics / sand plate simulation.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Working cymatics visualization v1
-- [ ] Reusable sand plate component created
-- [ ] Patterns respond to frequency changes
-- [ ] At least 2 plate shapes and 2 particle presets work
-- [ ] Visually mesmerizing
+- [x] Working cymatics visualization v1
+- [x] Reusable sand plate component created
+- [x] Patterns respond to frequency changes
+- [x] At least 2 plate shapes and 2 particle presets work
+- [x] Visually mesmerizing
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote

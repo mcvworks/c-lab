@@ -1,0 +1,28 @@
+# Handoff
+- Task: 009 — Digital Sand Plate Simulation v1
+- Status: done
+- Summary: Built a reusable SandPlateView component with real-time animated Chladni pattern simulation. 280 particles are attracted toward mathematical nodal lines using gradient descent on the Chladni equation. Supports 3 plate shapes (circle, square, hexagon) with SVG ClipPath, 3 particle materials (sand, salt, metal) with distinct colors and sizes. Frequency maps through 15 mode pairs for varied patterns. Particles get a velocity kick on large frequency changes to re-settle on new nodal lines.
+- Files Changed:
+  - `src/components/SandPlateView.tsx` — new reusable cymatics visualization component
+  - `src/components/index.ts` — added SandPlateView export
+  - `app/(tabs)/cymatics.tsx` — replaced inline placeholder with SandPlateView
+  - `claudeq/queue/009-sand-plate-simulation.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Navigate to Cymatics tab
+  - Tap Vibrate — particles should animate, settling toward nodal lines
+  - Slide frequency — pattern should shift as mode numbers change
+  - Jump between frequency presets — particles scatter and re-settle
+  - Switch plate shapes — particles reinitialize within new boundary
+  - Switch particle materials — colors/sizes change (warm sand, bright salt, cool metal)
+  - Tap Freeze — particles stop moving, FROZEN badge appears
+  - Tap Unfreeze — animation resumes
+  - Tap Stop — animation stops, outline dims
+- Blockers: None
+- Next Recommended Task: 010 (shared audio state)
+- Notes:
+  - Uses Chladni equation: cos(nπx)cos(mπy) - cos(mπx)cos(nπy)
+  - 15 mode pairs mapped across 20-2000 Hz with smooth blending between adjacent modes
+  - All 280 particles rendered as a single SVG Path for performance (one setNativeProps call per frame)
+  - Gradient descent moves particles toward |field| = 0 (nodal lines) with damping and organic jitter
