@@ -4,6 +4,7 @@ import { BinauralGenerator, AmbientGenerator, renderSession } from '@/src/audio'
 import type { AmbientLayerConfig, ExportProgress } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
+import { useResponsive } from '@/src/hooks/useResponsive';
 import type { ComposerSettings, ExportRecord } from '@/src/types/preset';
 import {
   Screen,
@@ -258,6 +259,8 @@ export default function ComposerScreen() {
     });
   }, []);
 
+  const { isTablet } = useResponsive();
+
   // Beat difference badge
   const beatBadge = activeBrainwave
     ? `${BRAINWAVE_LABELS[activeBrainwave]} · ${beatDifference.toFixed(1)} Hz`
@@ -452,98 +455,105 @@ export default function ComposerScreen() {
           style={styles.addLayerButton}
         />
 
-        {/* ── Session Settings ───────────────────────────────────── */}
-        <SectionHeader title="SESSION" label />
-        <Card style={styles.card}>
-          <Text style={styles.controlLabel}>Duration</Text>
-          <View style={styles.presetRow}>
-            {DURATION_PRESETS.map((d) => (
-              <PrimaryButton
-                key={d}
-                title={`${d}m`}
-                variant={duration === d ? 'filled' : 'ghost'}
-                onPress={() => setDuration(d)}
-                style={styles.presetButton}
+        {/* ── Session & Playback — side by side on tablet ───────── */}
+        <View style={isTablet ? styles.tabletRow : undefined}>
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            <SectionHeader title="SESSION" label />
+            <Card style={styles.card}>
+              <Text style={styles.controlLabel}>Duration</Text>
+              <View style={styles.presetRow}>
+                {DURATION_PRESETS.map((d) => (
+                  <PrimaryButton
+                    key={d}
+                    title={`${d}m`}
+                    variant={duration === d ? 'filled' : 'ghost'}
+                    onPress={() => setDuration(d)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+
+              <PrimarySlider
+                label="Duration"
+                value={duration}
+                onValueChange={(v) => setDuration(Math.round(v))}
+                min={1}
+                max={120}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} min`}
+                style={styles.slider}
               />
-            ))}
+
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade In</Text>
+              <View style={styles.presetRow}>
+                {FADE_OPTIONS.map((f) => (
+                  <PrimaryButton
+                    key={`in-${f}`}
+                    title={f === 0 ? 'None' : `${f}s`}
+                    variant={fadeIn === f ? 'filled' : 'ghost'}
+                    onPress={() => setFadeIn(f)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade Out</Text>
+              <View style={styles.presetRow}>
+                {FADE_OPTIONS.map((f) => (
+                  <PrimaryButton
+                    key={`out-${f}`}
+                    title={f === 0 ? 'None' : `${f}s`}
+                    variant={fadeOut === f ? 'filled' : 'ghost'}
+                    onPress={() => setFadeOut(f)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+            </Card>
           </View>
 
-          <PrimarySlider
-            label="Duration"
-            value={duration}
-            onValueChange={(v) => setDuration(Math.round(v))}
-            min={1}
-            max={120}
-            step={1}
-            formatValue={(v) => `${Math.round(v)} min`}
-            style={styles.slider}
-          />
-
-          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade In</Text>
-          <View style={styles.presetRow}>
-            {FADE_OPTIONS.map((f) => (
+          {/* ── Playback Controls ──────────────────────────────────── */}
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            {isTablet && <SectionHeader title="PLAYBACK" label />}
+            <View style={styles.buttonRow}>
               <PrimaryButton
-                key={`in-${f}`}
-                title={f === 0 ? 'None' : `${f}s`}
-                variant={fadeIn === f ? 'filled' : 'ghost'}
-                onPress={() => setFadeIn(f)}
-                style={styles.presetButton}
+                title={isPlaying ? 'Stop Session' : 'Start Session'}
+                variant={isPlaying ? 'outline' : 'filled'}
+                onPress={toggleSession}
+                style={styles.buttonFlex}
               />
-            ))}
-          </View>
+            </View>
 
-          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade Out</Text>
-          <View style={styles.presetRow}>
-            {FADE_OPTIONS.map((f) => (
+            <View style={styles.buttonRow}>
               <PrimaryButton
-                key={`out-${f}`}
-                title={f === 0 ? 'None' : `${f}s`}
-                variant={fadeOut === f ? 'filled' : 'ghost'}
-                onPress={() => setFadeOut(f)}
-                style={styles.presetButton}
+                title={exporting ? 'Exporting…' : 'Export WAV'}
+                variant="outline"
+                onPress={handleExport}
+                style={styles.buttonFlex}
+                disabled={exporting}
               />
-            ))}
+            </View>
+
+            <View style={styles.iconRow}>
+              <IconButton
+                variant="filled"
+                onPress={() => setShowSaveModal(true)}
+              >
+                <Text style={styles.iconFilledText}>♡</Text>
+              </IconButton>
+              <IconButton
+                variant="ghost"
+                onPress={() =>
+                  Alert.alert(
+                    'Composer',
+                    'Build binaural beat sessions with ambient layers.\n\nBinaural beats work by playing slightly different frequencies in each ear — the perceived beat frequency is the difference between them.\n\nUse headphones for the full effect.',
+                  )
+                }
+              >
+                <Text style={styles.iconText}>ⓘ</Text>
+              </IconButton>
+            </View>
           </View>
-        </Card>
-
-        {/* ── Playback Controls ──────────────────────────────────── */}
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            title={isPlaying ? 'Stop Session' : 'Start Session'}
-            variant={isPlaying ? 'outline' : 'filled'}
-            onPress={toggleSession}
-            style={styles.buttonFlex}
-          />
-        </View>
-
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            title={exporting ? 'Exporting…' : 'Export WAV'}
-            variant="outline"
-            onPress={handleExport}
-            style={styles.buttonFlex}
-            disabled={exporting}
-          />
-        </View>
-
-        <View style={styles.iconRow}>
-          <IconButton
-            variant="filled"
-            onPress={() => setShowSaveModal(true)}
-          >
-            <Text style={styles.iconFilledText}>♡</Text>
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            onPress={() =>
-              Alert.alert(
-                'Composer',
-                'Build binaural beat sessions with ambient layers.\n\nBinaural beats work by playing slightly different frequencies in each ear — the perceived beat frequency is the difference between them.\n\nUse headphones for the full effect.',
-              )
-            }
-          >
-            <Text style={styles.iconText}>ⓘ</Text>
-          </IconButton>
         </View>
 
         {/* Safety notice */}
@@ -730,6 +740,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  tabletRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  tabletHalf: {
+    flex: 1,
   },
   bottomSpacer: {
     height: spacing.xxl,

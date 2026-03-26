@@ -5,6 +5,7 @@ import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
+import { useResponsive } from '@/src/hooks/useResponsive';
 import type { Preset, ExportRecord } from '@/src/types/preset';
 import type { ExploreSettings, ComposerSettings } from '@/src/types/preset';
 import { colors, spacing, typography, radius } from '@/src/theme';
@@ -220,14 +221,20 @@ function ExportsSection() {
 
 export default function LibraryScreen() {
   const { presets, loaded, loadPresets } = usePresetStore();
+  const { gridColumns, isTablet } = useResponsive();
 
   useEffect(() => {
     if (!loaded) loadPresets();
   }, [loaded, loadPresets]);
 
-  const renderItem = useCallback(({ item }: { item: Preset }) => (
-    <PresetCard preset={item} />
-  ), []);
+  const renderItem = useCallback(({ item, index }: { item: Preset; index: number }) => (
+    <View style={[
+      styles.gridItem,
+      isTablet && { width: '50%' as const, paddingLeft: index % 2 === 0 ? 0 : spacing.sm, paddingRight: index % 2 === 0 ? spacing.sm : 0 },
+    ]}>
+      <PresetCard preset={item} />
+    </View>
+  ), [isTablet]);
 
   return (
     <Screen>
@@ -249,7 +256,9 @@ export default function LibraryScreen() {
         </ScrollView>
       ) : (
         <FlatList
+          key={`cols-${gridColumns}`}
           data={presets}
+          numColumns={gridColumns}
           keyExtractor={(p) => p.id}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
@@ -302,6 +311,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     paddingHorizontal: spacing.lg,
+  },
+  gridItem: {
+    flex: 1,
   },
   presetCard: {
     marginBottom: spacing.md,

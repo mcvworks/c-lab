@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
 import { usePresetStore } from '@/src/state/usePresetStore';
+import { useResponsive } from '@/src/hooks/useResponsive';
 import type { ExploreSettings } from '@/src/types/preset';
 import {
   Screen,
@@ -88,11 +89,8 @@ export default function ExploreScreen() {
     }
   }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType]);
 
-  const { width: screenWidth } = useWindowDimensions();
-  const isTablet = screenWidth >= 768;
-
-  const cardContentWidth = screenWidth - spacing.md * 4;
-  const vizHeight = isTablet ? 200 : 140;
+  const { contentWidth, vizHeight, isTablet } = useResponsive();
+  const cardContentWidth = contentWidth - spacing.md * 2;
 
   const handlePlay = useCallback(async () => {
     try {
@@ -119,42 +117,43 @@ export default function ExploreScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <SectionHeader title="Explore" subtitle="Tone generator & visualizations" />
 
-        {/* Waveform Visualization */}
-        <Card style={styles.vizCard} glowing={isPlaying}>
-          <View style={styles.vizHeader}>
-            <Text style={styles.vizTitle}>Waveform</Text>
-            <Text style={styles.vizBadge}>{vizBadge}</Text>
-          </View>
-          <View style={styles.vizContainer}>
-            <WaveformView
-              waveform={waveform}
-              frequency={frequency}
-              amplitude={amplitude}
-              width={cardContentWidth}
-              height={vizHeight}
-              isPlaying={isPlaying}
-              noiseType={sourceMode === 'noise' ? noiseType : null}
-            />
-          </View>
-        </Card>
+        {/* Visualizations — side by side on tablet */}
+        <View style={isTablet ? styles.tabletRow : undefined}>
+          <Card style={[styles.vizCard, isTablet && styles.tabletHalf]} glowing={isPlaying}>
+            <View style={styles.vizHeader}>
+              <Text style={styles.vizTitle}>Waveform</Text>
+              <Text style={styles.vizBadge}>{vizBadge}</Text>
+            </View>
+            <View style={styles.vizContainer}>
+              <WaveformView
+                waveform={waveform}
+                frequency={frequency}
+                amplitude={amplitude}
+                width={isTablet ? (cardContentWidth - spacing.md) / 2 : cardContentWidth}
+                height={vizHeight}
+                isPlaying={isPlaying}
+                noiseType={sourceMode === 'noise' ? noiseType : null}
+              />
+            </View>
+          </Card>
 
-        {/* Spectrum Visualization */}
-        <Card style={styles.vizCard} glowing={isPlaying}>
-          <View style={styles.vizHeader}>
-            <Text style={styles.vizTitle}>Spectrum</Text>
-            <Text style={styles.vizBadge}>{Math.round(amplitude * 100)}% level</Text>
-          </View>
-          <View style={styles.vizContainer}>
-            <SpectrumView
-              frequency={frequency}
-              amplitude={amplitude}
-              width={cardContentWidth}
-              height={vizHeight}
-              isPlaying={isPlaying}
-              noiseType={sourceMode === 'noise' ? noiseType : null}
-            />
-          </View>
-        </Card>
+          <Card style={[styles.vizCard, isTablet && styles.tabletHalf]} glowing={isPlaying}>
+            <View style={styles.vizHeader}>
+              <Text style={styles.vizTitle}>Spectrum</Text>
+              <Text style={styles.vizBadge}>{Math.round(amplitude * 100)}% level</Text>
+            </View>
+            <View style={styles.vizContainer}>
+              <SpectrumView
+                frequency={frequency}
+                amplitude={amplitude}
+                width={isTablet ? (cardContentWidth - spacing.md) / 2 : cardContentWidth}
+                height={vizHeight}
+                isPlaying={isPlaying}
+                noiseType={sourceMode === 'noise' ? noiseType : null}
+              />
+            </View>
+          </Card>
+        </View>
 
         {/* Source Mode Toggle */}
         <SectionHeader title="SOURCE" label />
@@ -368,6 +367,13 @@ const styles = StyleSheet.create({
   iconFilledText: {
     fontSize: 18,
     color: colors.background,
+  },
+  tabletRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  tabletHalf: {
+    flex: 1,
   },
   bottomSpacer: {
     height: spacing.xxl,

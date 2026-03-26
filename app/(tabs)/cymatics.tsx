@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
+import { useResponsive } from '@/src/hooks/useResponsive';
 import {
   Screen,
   Card,
@@ -50,9 +51,7 @@ export default function CymaticsScreen() {
     play, stop,
   } = useAudioStore();
 
-  const { width: screenWidth } = useWindowDimensions();
-  const isTablet = screenWidth >= 768;
-  const plateSize = Math.min(screenWidth - spacing.md * 4, isTablet ? 400 : 320);
+  const { plateSize, isTablet } = useResponsive();
 
   const handlePlay = useCallback(async () => {
     try {
@@ -139,68 +138,74 @@ export default function CymaticsScreen() {
           />
         </View>
 
-        {/* Frequency Controls */}
-        <SectionHeader title="FREQUENCY" label />
-        <Card style={styles.card}>
-          <PrimarySlider
-            label="Frequency"
-            value={frequency}
-            onValueChange={setFrequency}
-            min={20}
-            max={2000}
-            step={1}
-            formatValue={(v) => `${Math.round(v)} Hz`}
-          />
-
-          <View style={styles.presetRow}>
-            {FREQ_PRESETS.map((p) => (
-              <PrimaryButton
-                key={p.label}
-                title={`${p.label} Hz`}
-                variant={Math.abs(frequency - p.freq) < 1 ? 'filled' : 'ghost'}
-                onPress={() => setFrequency(p.freq)}
-                style={styles.presetButton}
+        {/* Frequency & Plate controls — side by side on tablet */}
+        <View style={isTablet ? styles.tabletRow : undefined}>
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            <SectionHeader title="FREQUENCY" label />
+            <Card style={styles.card}>
+              <PrimarySlider
+                label="Frequency"
+                value={frequency}
+                onValueChange={setFrequency}
+                min={20}
+                max={2000}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} Hz`}
               />
-            ))}
+
+              <View style={styles.presetRow}>
+                {FREQ_PRESETS.map((p) => (
+                  <PrimaryButton
+                    key={p.label}
+                    title={`${p.label} Hz`}
+                    variant={Math.abs(frequency - p.freq) < 1 ? 'filled' : 'ghost'}
+                    onPress={() => setFrequency(p.freq)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+
+              <PrimarySlider
+                label="Intensity"
+                value={amplitude}
+                onValueChange={setAmplitude}
+                min={0}
+                max={1}
+                step={0.01}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                style={styles.slider}
+              />
+            </Card>
           </View>
 
-          <PrimarySlider
-            label="Intensity"
-            value={amplitude}
-            onValueChange={setAmplitude}
-            min={0}
-            max={1}
-            step={0.01}
-            formatValue={(v) => `${Math.round(v * 100)}%`}
-            style={styles.slider}
-          />
-        </Card>
+          {/* Plate & Material */}
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            <SectionHeader title="PLATE & MATERIAL" label />
+            <Card style={styles.card}>
+              <Text style={styles.controlLabel}>Plate Shape</Text>
+              <SegmentedControl
+                options={PLATE_SHAPES}
+                selected={plateShape}
+                onSelect={setPlateShape}
+                labels={PLATE_SHAPE_LABELS}
+              />
 
-        {/* Plate & Material */}
-        <SectionHeader title="PLATE & MATERIAL" label />
-        <Card style={styles.card}>
-          <Text style={styles.controlLabel}>Plate Shape</Text>
-          <SegmentedControl
-            options={PLATE_SHAPES}
-            selected={plateShape}
-            onSelect={setPlateShape}
-            labels={PLATE_SHAPE_LABELS}
-          />
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Particle Material</Text>
+              <SegmentedControl
+                options={PARTICLE_STYLES}
+                selected={particleStyle}
+                onSelect={setParticleStyle}
+                labels={PARTICLE_STYLE_LABELS}
+              />
 
-          <Text style={[styles.controlLabel, styles.labelSpacing]}>Particle Material</Text>
-          <SegmentedControl
-            options={PARTICLE_STYLES}
-            selected={particleStyle}
-            onSelect={setParticleStyle}
-            labels={PARTICLE_STYLE_LABELS}
-          />
-
-          <Text style={styles.hint}>
-            {particleStyle === 'sand' && 'Fine warm sand — classic Chladni plate aesthetic.'}
-            {particleStyle === 'salt' && 'Fine white salt — bright and high contrast.'}
-            {particleStyle === 'metal' && 'Iron filings — cool metallic shimmer.'}
-          </Text>
-        </Card>
+              <Text style={styles.hint}>
+                {particleStyle === 'sand' && 'Fine warm sand — classic Chladni plate aesthetic.'}
+                {particleStyle === 'salt' && 'Fine white salt — bright and high contrast.'}
+                {particleStyle === 'metal' && 'Iron filings — cool metallic shimmer.'}
+              </Text>
+            </Card>
+          </View>
+        </View>
 
         {/* Utility Icons */}
         <View style={styles.iconRow}>
@@ -338,6 +343,13 @@ const styles = StyleSheet.create({
   iconFilledText: {
     fontSize: 18,
     color: colors.background,
+  },
+  tabletRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  tabletHalf: {
+    flex: 1,
   },
   bottomSpacer: {
     height: spacing.xxl,
