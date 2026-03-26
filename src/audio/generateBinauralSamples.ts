@@ -41,28 +41,13 @@ export function generateBinauralSamples(
   const left = new Float64Array(totalSamples);
   const right = new Float64Array(totalSamples);
 
-  // Short fade at buffer boundaries to prevent click on initial play/stop
-  const fadeLen = Math.min(64, Math.floor(totalSamples / 4));
-
+  // Both channels are phase-aligned sine waves with integer cycle counts,
+  // so the loop seam is seamless — no fade envelope needed. Play/stop
+  // fading is handled by the BinauralGenerator's gain ramps.
   for (let i = 0; i < totalSamples; i++) {
     const t = i / SAMPLE_RATE;
-
-    let lSample = Math.sin(2 * Math.PI * leftFreq * t) * amplitude;
-    let rSample = Math.sin(2 * Math.PI * rightFreq * t) * amplitude;
-
-    // Fade envelope at boundaries
-    if (i < fadeLen) {
-      const fade = i / fadeLen;
-      lSample *= fade;
-      rSample *= fade;
-    } else if (i > totalSamples - fadeLen) {
-      const fade = (totalSamples - i) / fadeLen;
-      lSample *= fade;
-      rSample *= fade;
-    }
-
-    left[i] = lSample;
-    right[i] = rSample;
+    left[i] = Math.sin(2 * Math.PI * leftFreq * t) * amplitude;
+    right[i] = Math.sin(2 * Math.PI * rightFreq * t) * amplitude;
   }
 
   return { left, right };

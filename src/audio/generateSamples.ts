@@ -20,23 +20,13 @@ export function generateSamples(
   const samples = new Float64Array(totalSamples);
   const gen = GENERATORS[waveform];
 
-  // Short fade envelope (first/last 64 samples) to soften any residual click
-  // on initial play/stop. Loop boundaries are phase-aligned so no fade needed there.
-  const fadeLen = Math.min(64, Math.floor(totalSamples / 4));
-
+  // Buffer is an exact integer number of cycles, so the loop seam is
+  // already phase-aligned — no fade envelope needed. Play/stop fading
+  // is handled by the ToneGenerator's gain ramps.
   for (let i = 0; i < totalSamples; i++) {
     const phase = (i / totalSamples) * numCycles; // 0 → numCycles
     const t = phase - Math.floor(phase); // normalized 0→1 within one cycle
-    let sample = gen(t) * amplitude;
-
-    // Apply fade envelope at buffer boundaries
-    if (i < fadeLen) {
-      sample *= i / fadeLen;
-    } else if (i > totalSamples - fadeLen) {
-      sample *= (totalSamples - i) / fadeLen;
-    }
-
-    samples[i] = sample;
+    samples[i] = gen(t) * amplitude;
   }
 
   return samples;
