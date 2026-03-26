@@ -1,0 +1,20 @@
+# Handoff
+- Task: 007 — Add Noise Sources
+- Status: done
+- Summary: Added white, pink, and brown noise generation to the Explore screen. Users can toggle between Tone and Noise modes. Each noise type has characteristic audio generation and visualization (waveform + spectrum). Smooth transitions when switching modes.
+- Files Changed:
+  - src/audio/types.ts — added NoiseType, SourceMode, NoiseParams, AudioParams
+  - src/audio/generateNoiseSamples.ts — new file: white/pink/brown noise generation
+  - src/audio/ToneGenerator.ts — updated to accept AudioParams (tone or noise)
+  - src/audio/index.ts — updated exports
+  - src/hooks/useToneGenerator.ts — added playNoise, updateNoiseParams
+  - src/components/WaveformView.tsx — added noise waveform visualization
+  - src/components/SpectrumView.tsx — added noise spectrum visualization
+  - app/(tabs)/explore.tsx — added Tone/Noise mode toggle, noise type selector, noise descriptions
+  - app/index.tsx — new file: root redirect (bugfix from earlier)
+  - app/(tabs)/_layout.tsx — replaced expo-symbols with text icons (bugfix from earlier)
+- Commands Run: npx tsc --noEmit (clean)
+- Testing: Switch to Noise mode, select white/pink/brown, play — should hear distinct noise types and see matching visualizations
+- Blockers: none
+- Next Recommended Task: 008 — Cymatics Screen UX
+- Notes: Pink noise uses Voss-McCartney algorithm. Brown noise uses integrated white noise with leak factor. Visualizations show characteristic spectral shapes (flat for white, 1/f rolloff for pink, steep low-freq for brown).

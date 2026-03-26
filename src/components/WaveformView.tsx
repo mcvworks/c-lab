@@ -3,6 +3,8 @@ import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors } from '@/src/theme';
 
+type NoiseType = 'white' | 'pink' | 'brown';
+
 interface WaveformViewProps {
   waveform: 'sine' | 'square' | 'saw' | 'triangle';
   frequency: number;
@@ -10,6 +12,7 @@ interface WaveformViewProps {
   width: number;
   height: number;
   isPlaying?: boolean;
+  noiseType?: NoiseType | null;
   style?: ViewStyle;
 }
 
@@ -65,6 +68,40 @@ function generateWaveformPath(
   return parts.join(' ');
 }
 
+/** Generate a noise-like waveform path using sin-based pseudo-random */
+function generateNoisePath(
+  noiseType: NoiseType,
+  amplitude: number,
+  width: number,
+  height: number,
+  seed: number,
+): string {
+  const mid = height / 2;
+  const amp = (height / 2 - 4) * amplitude;
+  const points = Math.max(200, Math.round(width));
+  const parts: string[] = [];
+
+  // Smoothing factor: white = jagged, pink = medium, brown = smooth
+  const smooth = noiseType === 'brown' ? 0.92 : noiseType === 'pink' ? 0.75 : 0.3;
+  let value = 0;
+
+  for (let i = 0; i <= points; i++) {
+    const x = (i / points) * width;
+    // Use multiple sin waves at different frequencies as pseudo-random source
+    const raw =
+      Math.sin(seed * 3.1 + i * 0.47) * 0.4 +
+      Math.sin(seed * 7.3 + i * 1.13) * 0.3 +
+      Math.sin(seed * 13.7 + i * 2.71) * 0.2 +
+      Math.sin(seed * 23.1 + i * 5.03) * 0.1;
+
+    value = value * smooth + raw * (1 - smooth);
+    const py = mid - value * amp;
+    parts.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${py.toFixed(1)}`);
+  }
+
+  return parts.join(' ');
+}
+
 function generateFillPath(
   waveform: string,
   frequency: number,
@@ -84,6 +121,7 @@ export default function WaveformView({
   width,
   height,
   isPlaying = false,
+  noiseType = null,
   style,
 }: WaveformViewProps) {
   const linePathRef = useRef<Path | null>(null);
@@ -93,14 +131,16 @@ export default function WaveformView({
   const lastTimeRef = useRef<number | null>(null);
 
   // Refs for latest props so the animation loop always reads current values
-  const propsRef = useRef({ waveform, frequency, amplitude, width, height });
-  propsRef.current = { waveform, frequency, amplitude, width, height };
+  const propsRef = useRef({ waveform, frequency, amplitude, width, height, noiseType });
+  propsRef.current = { waveform, frequency, amplitude, width, height, noiseType };
 
   const updatePaths = useCallback((phase: number) => {
-    const { waveform: w, frequency: f, amplitude: a, width: cw, height: ch } = propsRef.current;
+    const { waveform: w, frequency: f, amplitude: a, width: cw, height: ch, noiseType: nt } = propsRef.current;
     if (cw <= 0 || ch <= 0) return;
 
-    const line = generateWaveformPath(w, f, a, cw, ch, phase);
+    const line = nt
+      ? generateNoisePath(nt, a, cw, ch, phase)
+      : generateWaveformPath(w, f, a, cw, ch, phase);
     const fill = `${line} L${cw},${ch} L0,${ch} Z`;
 
     linePathRef.current?.setNativeProps({ d: line });
@@ -125,7 +165,9 @@ export default function WaveformView({
         const dt = (time - lastTimeRef.current) / 1000; // seconds
         // Scroll speed: phase advances proportionally to frequency.
         // Scale down so the visual motion feels natural rather than a blur.
-        const speed = propsRef.current.frequency * 0.3;
+        const speed = propsRef.current.noiseType
+          ? 6 // Steady animation speed for noise
+          : propsRef.current.frequency * 0.3;
         phaseRef.current += speed * dt * Math.PI * 2 / getCycleCount(propsRef.current.frequency);
         // Keep phase bounded to avoid precision loss over long sessions
         if (phaseRef.current > Math.PI * 200) {

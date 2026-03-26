@@ -3,12 +3,15 @@ import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { colors } from '@/src/theme';
 
+type NoiseType = 'white' | 'pink' | 'brown';
+
 interface SpectrumViewProps {
   frequency: number;
   amplitude: number;
   width: number;
   height: number;
   isPlaying?: boolean;
+  noiseType?: NoiseType | null;
   style?: ViewStyle;
 }
 
@@ -46,12 +49,50 @@ function generateSpectrumData(
   return bars;
 }
 
+/** Generate spectrum for noise sources — characteristic shapes per noise type */
+function generateNoiseSpectrum(
+  noiseType: NoiseType,
+  amplitude: number,
+  jitterSeed: number,
+): number[] {
+  const bars: number[] = [];
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const frac = i / BAR_COUNT; // 0→1 across frequency range
+    let base: number;
+
+    switch (noiseType) {
+      case 'white':
+        // Flat spectrum
+        base = 0.5;
+        break;
+      case 'pink':
+        // 1/f — more energy at low frequencies, rolls off
+        base = 0.7 * Math.pow(1 - frac * 0.8, 0.6);
+        break;
+      case 'brown':
+        // 1/f² — steep low-frequency emphasis
+        base = 0.8 * Math.pow(1 - frac * 0.9, 1.5);
+        break;
+    }
+
+    // Animated jitter
+    const noise =
+      0.08 *
+      (0.5 + 0.5 * Math.sin(jitterSeed * 4.1 + i * 2.3)) *
+      (0.6 + 0.4 * Math.sin(jitterSeed * 6.7 + i * 1.7));
+
+    bars.push(Math.min(1, (base + noise) * amplitude));
+  }
+  return bars;
+}
+
 export default function SpectrumView({
   frequency,
   amplitude,
   width,
   height,
   isPlaying = false,
+  noiseType = null,
   style,
 }: SpectrumViewProps) {
   const barRefs = useRef<(Rect | null)[]>([]);
@@ -59,16 +100,18 @@ export default function SpectrumView({
   const seedRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
 
-  const propsRef = useRef({ frequency, amplitude, width, height });
-  propsRef.current = { frequency, amplitude, width, height };
+  const propsRef = useRef({ frequency, amplitude, width, height, noiseType });
+  propsRef.current = { frequency, amplitude, width, height, noiseType };
 
   const updateBars = useCallback((seed: number) => {
-    const { frequency: f, amplitude: a, width: w, height: h } = propsRef.current;
+    const { frequency: f, amplitude: a, width: w, height: h, noiseType: nt } = propsRef.current;
     if (w <= 0 || h <= 0) return;
 
     const barWidth = Math.max(1, (w - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
     const maxBarHeight = h - 4;
-    const bars = generateSpectrumData(f, a, seed);
+    const bars = nt
+      ? generateNoiseSpectrum(nt, a, seed)
+      : generateSpectrumData(f, a, seed);
 
     for (let i = 0; i < BAR_COUNT; i++) {
       const ref = barRefs.current[i];
@@ -127,7 +170,9 @@ export default function SpectrumView({
 
   const barWidth = Math.max(1, (width - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
   const maxBarHeight = height - 4;
-  const initialBars = generateSpectrumData(frequency, amplitude, seedRef.current);
+  const initialBars = noiseType
+    ? generateNoiseSpectrum(noiseType, amplitude, seedRef.current)
+    : generateSpectrumData(frequency, amplitude, seedRef.current);
 
   return (
     <View style={[styles.container, style]}>

@@ -1,7 +1,7 @@
 ---
 task_id: "007"
 title: Add Noise Sources
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -21,9 +21,9 @@ Expand Explore beyond simple oscillator tones.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] White, pink, and brown noise can be generated
-- [ ] Noise types selectable from Explore UI
-- [ ] Visuals update for noise sources
-- [ ] Smooth transitions between tone and noise
+- [x] White, pink, and brown noise can be generated
+- [x] Noise types selectable from Explore UI
+- [x] Visuals update for noise sources
+- [x] Smooth transitions between tone and noise
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote

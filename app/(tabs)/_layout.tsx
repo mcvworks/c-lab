@@ -1,23 +1,22 @@
 import { Tabs } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { Platform } from 'react-native';
+import { Platform, Text, StyleSheet } from 'react-native';
 import { colors, typography } from '@/src/theme';
 
-type TabIconProps = {
-  color: string;
-  iosName: string;
-  androidName: string;
+const TAB_ICONS: Record<string, string> = {
+  explore: '♫',
+  cymatics: '◎',
+  composer: '♬',
+  library: '▤',
+  settings: '⚙',
 };
 
-function TabIcon({ color, iosName, androidName }: TabIconProps) {
-  return (
-    <SymbolView
-      name={{ ios: iosName, android: androidName, web: androidName } as any}
-      tintColor={color}
-      size={24}
-    />
-  );
+function TabIcon({ name, color }: { name: string; color: string }) {
+  return <Text style={[iconStyles.icon, { color }]}>{TAB_ICONS[name] ?? '•'}</Text>;
 }
+
+const iconStyles = StyleSheet.create({
+  icon: { fontSize: 20, textAlign: 'center' },
+});
 
 export default function TabLayout() {
   return (
@@ -45,45 +44,35 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color }) => (
-            <TabIcon color={color} iosName="waveform" androidName="graphic_eq" />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="explore" color={color} />,
         }}
       />
       <Tabs.Screen
         name="cymatics"
         options={{
           title: 'Cymatics',
-          tabBarIcon: ({ color }) => (
-            <TabIcon color={color} iosName="circle.hexagongrid" androidName="grain" />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="cymatics" color={color} />,
         }}
       />
       <Tabs.Screen
         name="composer"
         options={{
           title: 'Composer',
-          tabBarIcon: ({ color }) => (
-            <TabIcon color={color} iosName="music.note.list" androidName="queue_music" />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="composer" color={color} />,
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
-          tabBarIcon: ({ color }) => (
-            <TabIcon color={color} iosName="books.vertical" androidName="library_books" />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="library" color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => (
-            <TabIcon color={color} iosName="gearshape" androidName="settings" />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="settings" color={color} />,
         }}
       />
     </Tabs>
