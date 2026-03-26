@@ -1,9 +1,105 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
-import { colors, spacing, typography } from '@/src/theme';
+import { usePresetStore } from '@/src/state/usePresetStore';
+import type { Preset } from '@/src/types/preset';
+import type { ExploreSettings, ComposerSettings } from '@/src/types/preset';
+import { colors, spacing, typography, radius } from '@/src/theme';
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const month = d.toLocaleString('default', { month: 'short' });
+  const day = d.getDate();
+  const time = d.toLocaleTimeString('default', { hour: '2-digit', minute: '2-digit' });
+  return `${month} ${day}, ${time}`;
+}
+
+function presetSummary(preset: Preset): string {
+  if (preset.type === 'explore') {
+    const s = preset.settings as ExploreSettings;
+    if (s.sourceMode === 'noise') {
+      return `${s.noiseType} noise · ${Math.round(s.amplitude * 100)}%`;
+    }
+    return `${s.waveform} · ${Math.round(s.frequency)} Hz · ${Math.round(s.amplitude * 100)}%`;
+  }
+  const s = preset.settings as ComposerSettings;
+  const layerCount = s.layers.length;
+  return `${s.beatDifference.toFixed(1)} Hz beat · ${s.baseFrequency} Hz base · ${layerCount} layer${layerCount !== 1 ? 's' : ''}`;
+}
+
+function PresetCard({ preset }: { preset: Preset }) {
+  const router = useRouter();
+  const { deletePreset, duplicatePreset, setPendingLoad } = usePresetStore();
+
+  const handleLoad = useCallback(() => {
+    setPendingLoad(preset);
+    if (preset.type === 'explore') {
+      router.navigate('/explore');
+    } else {
+      router.navigate('/composer');
+    }
+  }, [preset, setPendingLoad, router]);
+
+  const handleDuplicate = useCallback(() => {
+    duplicatePreset(preset.id);
+  }, [preset.id, duplicatePreset]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert('Delete Preset', `Delete "${preset.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deletePreset(preset.id),
+      },
+    ]);
+  }, [preset.id, preset.name, deletePreset]);
+
+  return (
+    <Card style={styles.presetCard}>
+      <View style={styles.presetHeader}>
+        <View style={styles.presetInfo}>
+          <Text style={styles.presetName} numberOfLines={1}>{preset.name}</Text>
+          <View style={styles.metaRow}>
+            <View style={[styles.typeBadge, preset.type === 'composer' && styles.composerBadge]}>
+              <Text style={[styles.typeBadgeText, preset.type === 'composer' && styles.composerBadgeText]}>
+                {preset.type === 'explore' ? 'Explore' : 'Composer'}
+              </Text>
+            </View>
+            <Text style={styles.dateText}>{formatDate(preset.createdAt)}</Text>
+          </View>
+          <Text style={styles.summary} numberOfLines={1}>{presetSummary(preset)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.actionRow}>
+        <Pressable style={[styles.actionButton, styles.loadButton]} onPress={handleLoad}>
+          <Text style={styles.loadText}>Load</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={handleDuplicate}>
+          <Text style={styles.actionText}>Duplicate</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={handleDelete}>
+          <Text style={[styles.actionText, styles.dangerText]}>Delete</Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
 
 export default function LibraryScreen() {
+  const { presets, loaded, loadPresets } = usePresetStore();
+
+  useEffect(() => {
+    if (!loaded) loadPresets();
+  }, [loaded, loadPresets]);
+
+  const renderItem = useCallback(({ item }: { item: Preset }) => (
+    <PresetCard preset={item} />
+  ), []);
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -11,13 +107,23 @@ export default function LibraryScreen() {
         <Text style={styles.subtitle}>Saved presets & exports</Text>
       </View>
 
-      <Card style={styles.emptyState}>
-        <Text style={styles.emptyIcon}>♪</Text>
-        <Text style={styles.emptyTitle}>No presets yet</Text>
-        <Text style={styles.emptyBody}>
-          Save a session from Explore or Composer to see it here.
-        </Text>
-      </Card>
+      {presets.length === 0 ? (
+        <Card style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>&#9834;</Text>
+          <Text style={styles.emptyTitle}>No presets yet</Text>
+          <Text style={styles.emptyBody}>
+            Save a session from Explore or Composer to see it here.
+          </Text>
+        </Card>
+      ) : (
+        <FlatList
+          data={presets}
+          keyExtractor={(p) => p.id}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.list}
+        />
+      )}
     </Screen>
   );
 }
@@ -38,6 +144,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
+  list: {
+    paddingBottom: spacing.xxl,
+  },
   emptyState: {
     marginTop: spacing.xl,
     alignItems: 'center',
@@ -46,6 +155,7 @@ const styles = StyleSheet.create({
   emptyIcon: {
     fontSize: 40,
     marginBottom: spacing.md,
+    color: colors.textMuted,
   },
   emptyTitle: {
     fontSize: typography.lg,
@@ -59,5 +169,82 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     paddingHorizontal: spacing.lg,
+  },
+  presetCard: {
+    marginBottom: spacing.md,
+  },
+  presetHeader: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  presetInfo: {
+    flex: 1,
+  },
+  presetName: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  typeBadge: {
+    backgroundColor: colors.accentGlow,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  composerBadge: {
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  typeBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.accent,
+  },
+  composerBadgeText: {
+    color: colors.highlight,
+  },
+  dateText: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+  },
+  summary: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  actionButton: {
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceElevated,
+  },
+  loadButton: {
+    backgroundColor: colors.accent,
+  },
+  loadText: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: colors.background,
+  },
+  actionText: {
+    fontSize: typography.sm,
+    fontWeight: typography.medium,
+    color: colors.textSecondary,
+  },
+  dangerText: {
+    color: colors.danger,
   },
 });

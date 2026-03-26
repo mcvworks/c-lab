@@ -1,6 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
+import { usePresetStore } from '@/src/state/usePresetStore';
+import type { ExploreSettings } from '@/src/types/preset';
 import {
   Screen,
   Card,
@@ -11,6 +13,7 @@ import {
   SegmentedControl,
   WaveformView,
   SpectrumView,
+  SavePresetModal,
 } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType } from '@/src/audio';
@@ -50,6 +53,40 @@ export default function ExploreScreen() {
     setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType,
     play, stop, reset,
   } = useAudioStore();
+
+  const savePreset = usePresetStore((s) => s.savePreset);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  const handleSavePreset = useCallback(async (name: string) => {
+    const settings: ExploreSettings = {
+      sourceMode, frequency, amplitude, waveform, noiseType,
+    };
+    await savePreset(name, 'explore', settings);
+    setShowSaveModal(false);
+    Alert.alert('Saved', `Preset "${name || 'Explore Preset'}" saved to Library.`);
+  }, [sourceMode, frequency, amplitude, waveform, noiseType, savePreset]);
+
+  // Ensure presets are loaded
+  const presetLoaded = usePresetStore((s) => s.loaded);
+  const loadPresets = usePresetStore((s) => s.loadPresets);
+  useEffect(() => {
+    if (!presetLoaded) loadPresets();
+  }, [presetLoaded, loadPresets]);
+
+  // Load preset from Library
+  const pendingLoad = usePresetStore((s) => s.pendingLoad);
+  const setPendingLoad = usePresetStore((s) => s.setPendingLoad);
+  useEffect(() => {
+    if (pendingLoad && pendingLoad.type === 'explore') {
+      const s = pendingLoad.settings as ExploreSettings;
+      setSourceMode(s.sourceMode);
+      setFrequency(s.frequency);
+      setAmplitude(s.amplitude);
+      setWaveform(s.waveform);
+      setNoiseType(s.noiseType);
+      setPendingLoad(null);
+    }
+  }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType]);
 
   const { width: screenWidth } = useWindowDimensions();
   const isTablet = screenWidth >= 768;
@@ -230,7 +267,7 @@ export default function ExploreScreen() {
           <IconButton variant="outline" onPress={handleReset}>
             <Text style={styles.iconText}>↺</Text>
           </IconButton>
-          <IconButton variant="filled" onPress={() => Alert.alert('Save', 'Preset save coming soon')}>
+          <IconButton variant="filled" onPress={() => setShowSaveModal(true)}>
             <Text style={styles.iconFilledText}>♡</Text>
           </IconButton>
           <IconButton variant="ghost" onPress={() => Alert.alert('Info', 'Explore sound with different waveform shapes, frequencies, noise types, and amplitudes.')}>
@@ -240,6 +277,13 @@ export default function ExploreScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <SavePresetModal
+        visible={showSaveModal}
+        defaultName={sourceMode === 'noise' ? `${noiseType} noise` : `${waveform} ${Math.round(frequency)} Hz`}
+        onSave={handleSavePreset}
+        onCancel={() => setShowSaveModal(false)}
+      />
     </Screen>
   );
 }

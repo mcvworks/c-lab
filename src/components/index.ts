@@ -8,3 +8,4 @@ export { default as SegmentedControl } from './SegmentedControl';
 export { default as WaveformView } from './WaveformView';
 export { default as SpectrumView } from './SpectrumView';
 export { default as SandPlateView } from './SandPlateView';
+export { default as SavePresetModal } from './SavePresetModal';

@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BinauralGenerator, AmbientGenerator } from '@/src/audio';
 import type { AmbientLayerConfig } from '@/src/audio';
+import { usePresetStore } from '@/src/state/usePresetStore';
+import type { ComposerSettings } from '@/src/types/preset';
 import {
   Screen,
   Card,
@@ -10,6 +12,7 @@ import {
   IconButton,
   PrimarySlider,
   SegmentedControl,
+  SavePresetModal,
 } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
@@ -97,6 +100,42 @@ export default function ComposerScreen() {
   const [duration, setDuration] = useState(15);
   const [fadeIn, setFadeIn] = useState(5);
   const [fadeOut, setFadeOut] = useState(5);
+
+  // Save modal
+  const savePreset = usePresetStore((s) => s.savePreset);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  const handleSavePreset = useCallback(async (name: string) => {
+    const settings: ComposerSettings = {
+      baseFrequency,
+      beatDifference,
+      binauralVolume,
+      layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
+      duration,
+      fadeIn,
+      fadeOut,
+    };
+    await savePreset(name, 'composer', settings);
+    setShowSaveModal(false);
+    Alert.alert('Saved', `Preset "${name || 'Composer Preset'}" saved to Library.`);
+  }, [baseFrequency, beatDifference, binauralVolume, layers, duration, fadeIn, fadeOut, savePreset]);
+
+  // Load preset from Library
+  const pendingLoad = usePresetStore((s) => s.pendingLoad);
+  const setPendingLoad = usePresetStore((s) => s.setPendingLoad);
+  useEffect(() => {
+    if (pendingLoad && pendingLoad.type === 'composer') {
+      const s = pendingLoad.settings as ComposerSettings;
+      setBaseFrequency(s.baseFrequency);
+      setBeatDifference(s.beatDifference);
+      setBinauralVolume(s.binauralVolume);
+      setLayers(s.layers.map((l, i) => ({ ...l, id: nextLayerId++ })));
+      setDuration(s.duration);
+      setFadeIn(s.fadeIn);
+      setFadeOut(s.fadeOut);
+      setPendingLoad(null);
+    }
+  }, [pendingLoad, setPendingLoad]);
 
   const leftFreq = baseFrequency;
   const rightFreq = baseFrequency + beatDifference;
@@ -422,7 +461,7 @@ export default function ComposerScreen() {
         <View style={styles.iconRow}>
           <IconButton
             variant="filled"
-            onPress={() => Alert.alert('Save', 'Preset save coming soon')}
+            onPress={() => setShowSaveModal(true)}
           >
             <Text style={styles.iconFilledText}>♡</Text>
           </IconButton>
@@ -448,6 +487,13 @@ export default function ComposerScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <SavePresetModal
+        visible={showSaveModal}
+        defaultName={`${beatDifference.toFixed(0)} Hz binaural`}
+        onSave={handleSavePreset}
+        onCancel={() => setShowSaveModal(false)}
+      />
     </Screen>
   );
 }

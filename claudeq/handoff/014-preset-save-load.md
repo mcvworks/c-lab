@@ -1,0 +1,32 @@
+# Handoff
+- Task: 014 — Preset Save/Load System
+- Status: done
+- Summary: Built a full preset save/load system using AsyncStorage. Users can save Explore and Composer settings as named presets, view them in the Library tab, load them back into the originating screen, duplicate or delete presets. Presets persist across app restarts.
+- Files Changed:
+  - `src/types/preset.ts` — new preset type definitions (ExploreSettings, ComposerSettings, Preset)
+  - `src/state/usePresetStore.ts` — new Zustand store with AsyncStorage persistence (save, delete, duplicate, rename, pendingLoad)
+  - `src/components/SavePresetModal.tsx` — new modal dialog for naming and saving presets
+  - `src/components/index.ts` — barrel export for SavePresetModal
+  - `app/(tabs)/explore.tsx` — wired save button to SavePresetModal, added pendingLoad consumer for loading presets from Library
+  - `app/(tabs)/composer.tsx` — wired save button to SavePresetModal, added pendingLoad consumer for loading presets from Library
+  - `app/(tabs)/library.tsx` — rebuilt with FlatList of presets, Load/Duplicate/Delete actions, type badges, summaries
+  - `claudeq/queue/014-preset-save-load.md` — status updated to done
+- Commands Run:
+  - `npx expo install @react-native-async-storage/async-storage`
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Navigate to Explore, tap the heart icon, enter a name, tap Save — preset appears in Library
+  - Navigate to Composer, tap the heart icon, enter a name, tap Save — preset appears in Library
+  - In Library, tap Load on an Explore preset — navigates to Explore with settings restored
+  - In Library, tap Load on a Composer preset — navigates to Composer with settings restored
+  - Tap Duplicate — creates a copy below the original
+  - Tap Delete — confirmation dialog, then preset removed
+  - Restart the app — presets persist
+- Blockers: None
+- Next Recommended Task: 015 (export audio, session timer, or remaining MVP features)
+- Notes:
+  - Presets are stored as JSON in AsyncStorage under `@resonance_lab/presets`
+  - Load uses a pendingLoad mechanism: Library sets the preset and navigates, the target screen picks it up via useEffect
+  - Explore presets capture: sourceMode, frequency, amplitude, waveform, noiseType
+  - Composer presets capture: baseFrequency, beatDifference, binauralVolume, layers (type/volume/enabled), duration, fadeIn, fadeOut
+  - Layer IDs are re-assigned on load to avoid collisions with the nextLayerId counter

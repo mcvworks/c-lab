@@ -1,7 +1,7 @@
 ---
 task_id: "014"
 title: Preset Save/Load System
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -21,9 +21,9 @@ Allow the user to save and reload sound setups locally.
 - Push to the remote repository
 
 ## Acceptance Criteria
-- [ ] Local preset persistence working
-- [ ] Functional save/load UX
-- [ ] Presets persist across app restarts
-- [ ] Duplicate and delete actions work
+- [x] Local preset persistence working
+- [x] Functional save/load UX
+- [x] Presets persist across app restarts
+- [x] Duplicate and delete actions work
 - [ ] Changes committed with clear message referencing task number
 - [ ] Changes pushed to remote
