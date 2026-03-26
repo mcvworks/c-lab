@@ -1,0 +1,24 @@
+# Handoff
+- Task: 008 — Cymatics Screen Initial UX
+- Status: done
+- Summary: Built the full Cymatics screen with sand plate visualization placeholder, frequency/intensity sliders, plate shape and particle material presets, play/freeze/stop controls, frequency presets (solfeggio frequencies), and utility buttons. Matches the premium dark theme and follows the same component patterns as the Explore screen.
+- Files Changed:
+  - `app/(tabs)/cymatics.tsx` — full rewrite from placeholder to complete UI
+  - `claudeq/queue/008-cymatics-screen-ux.md` — status updated to done
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile, no errors
+- Testing:
+  - Launch the app and navigate to the Cymatics tab
+  - Verify the sand plate visualization area renders with particle dots
+  - Test frequency slider (20–2000 Hz) and intensity slider (0–100%)
+  - Test solfeggio frequency presets (174, 285, 396, 528, 639 Hz)
+  - Test plate shape switcher (Circle, Square, Hexagon)
+  - Test particle material switcher (Sand, Salt, Metal) — each shows different color
+  - Press Vibrate to play tone and see glow effects
+  - Press Freeze while playing to toggle frozen state
+  - Press Stop to stop playback
+  - Press reset (↺) to return to defaults
+  - Verify responsive layout on phone and tablet widths
+- Blockers: None
+- Next Recommended Task: 009 (cymatics simulation logic / animated nodal patterns)
+- Notes: The current visualization uses static dot positions calculated from frequency. The next task should replace this with a proper physics-based or Chladni pattern simulation with real-time animation using requestAnimationFrame.
