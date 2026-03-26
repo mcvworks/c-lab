@@ -1,27 +1,45 @@
 import { Platform } from 'react-native';
-import { AudioParams } from './types';
+import { AudioParams, WaveformType } from './types';
 import { generateSamples } from './generateSamples';
 import { generateNoiseSamples } from './generateNoiseSamples';
 import { encodeWavBase64 } from './encodeWav';
 
-// Duration of crossfade between old and new buffer sources (seconds)
-const XFADE_TIME = 0.04;
+/** Map our waveform names to Web Audio OscillatorNode type values. */
+const OSC_TYPE: Record<WaveformType, OscillatorType> = {
+  sine: 'sine',
+  square: 'square',
+  saw: 'sawtooth',
+  triangle: 'triangle',
+};
+
+// Ramp duration for smooth parameter transitions (seconds)
+const RAMP_TIME = 0.03;
 
 /**
  * Manages tone/noise generation and playback.
  *
- * On web: uses Web Audio API with AudioBuffer. Parameter changes crossfade
- * between old and new buffer sources to prevent clicks/pops.
- * On native: uses expo-av with temp WAV files.
+ * On web:
+ *   Tone mode → OscillatorNode with smooth frequency/type ramps (no buffers).
+ *   Noise mode → looped AudioBuffer with crossfade on change.
+ * On native: expo-av with temp WAV files.
  */
 export class ToneGenerator {
   private currentParams: AudioParams | null = null;
   private playing = false;
 
-  // Web Audio API state
+  // Web Audio shared state
   private audioCtx: AudioContext | null = null;
-  private sourceNode: AudioBufferSourceNode | null = null;
-  private gainNode: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+
+  // Web Audio — tone mode (oscillator-based)
+  private oscillator: OscillatorNode | null = null;
+
+  // Web Audio — noise mode (buffer-based)
+  private noiseSource: AudioBufferSourceNode | null = null;
+  private noiseGain: GainNode | null = null;
+
+  // Track which web mode is active: 'osc' | 'buf' | null
+  private webMode: 'osc' | 'buf' | null = null;
 
   // Native state
   private nativeSound: any = null; // expo-av Sound
@@ -78,90 +96,145 @@ export class ToneGenerator {
     return this.audioCtx;
   }
 
+  private ensureMasterGain(): GainNode {
+    const ctx = this.getAudioContext();
+    if (!this.masterGain) {
+      this.masterGain = ctx.createGain();
+      this.masterGain.connect(ctx.destination);
+    }
+    return this.masterGain;
+  }
+
   private async playWeb(params: AudioParams): Promise<void> {
     const ctx = this.getAudioContext();
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
 
-    const samples = params.mode === 'noise'
-      ? generateNoiseSamples(params.amplitude, params.noiseType)
-      : generateSamples(
-          (params as any).frequency,
-          params.amplitude,
-          (params as any).waveform,
-        );
+    if (params.mode === 'tone') {
+      await this.playWebTone(params);
+    } else {
+      await this.playWebNoise(params);
+    }
+  }
 
-    // Create AudioBuffer from samples
+  /** Tone mode: use OscillatorNode for click-free parameter changes. */
+  private async playWebTone(params: AudioParams & { mode: 'tone' }): Promise<void> {
+    const ctx = this.getAudioContext();
+    const master = this.ensureMasterGain();
+    const now = ctx.currentTime;
+
+    // If switching from noise → tone, tear down noise first
+    if (this.webMode === 'buf') {
+      this.teardownNoiseBuf();
+    }
+
+    if (this.oscillator && this.webMode === 'osc') {
+      // Already have an oscillator running — just ramp parameters
+      this.oscillator.frequency.linearRampToValueAtTime(params.frequency, now + RAMP_TIME);
+      if (this.oscillator.type !== OSC_TYPE[params.waveform]) {
+        this.oscillator.type = OSC_TYPE[params.waveform];
+      }
+      master.gain.linearRampToValueAtTime(params.amplitude, now + RAMP_TIME);
+    } else {
+      // Create fresh oscillator
+      master.gain.setValueAtTime(params.amplitude, now);
+
+      this.oscillator = ctx.createOscillator();
+      this.oscillator.type = OSC_TYPE[params.waveform];
+      this.oscillator.frequency.setValueAtTime(params.frequency, now);
+      this.oscillator.connect(master);
+      this.oscillator.start(now);
+    }
+
+    this.webMode = 'osc';
+  }
+
+  /** Noise mode: looped AudioBuffer with crossfade on switch. */
+  private async playWebNoise(params: AudioParams & { mode: 'noise' }): Promise<void> {
+    const ctx = this.getAudioContext();
+    const master = this.ensureMasterGain();
+    const now = ctx.currentTime;
+
+    // If switching from tone → noise, tear down oscillator first
+    if (this.webMode === 'osc') {
+      this.teardownOsc();
+    }
+
+    const samples = generateNoiseSamples(params.amplitude, params.noiseType);
     const buffer = ctx.createBuffer(1, samples.length, 44100);
     const channelData = buffer.getChannelData(0);
     for (let i = 0; i < samples.length; i++) {
       channelData[i] = samples[i];
     }
 
-    const now = ctx.currentTime;
-    const oldSource = this.sourceNode;
-    const oldGain = this.gainNode;
-
-    // Create new gain node for this source
     const newGain = ctx.createGain();
-    newGain.connect(ctx.destination);
-
-    // Create and start new source
     const newSource = ctx.createBufferSource();
     newSource.buffer = buffer;
     newSource.loop = true;
     newSource.connect(newGain);
+    newGain.connect(master);
+
+    const oldSource = this.noiseSource;
+    const oldGain = this.noiseGain;
 
     if (oldSource && oldGain) {
-      // Crossfade: ramp old down, ramp new up
+      // Crossfade
       newGain.gain.setValueAtTime(0, now);
-      newGain.gain.linearRampToValueAtTime(params.amplitude, now + XFADE_TIME);
+      newGain.gain.linearRampToValueAtTime(1, now + RAMP_TIME);
       newSource.start(now);
 
-      oldGain.gain.linearRampToValueAtTime(0, now + XFADE_TIME);
-      // Schedule cleanup of old source after crossfade completes
+      oldGain.gain.linearRampToValueAtTime(0, now + RAMP_TIME);
       setTimeout(() => {
-        try {
-          oldSource.stop();
-          oldSource.disconnect();
-          oldGain.disconnect();
-        } catch { /* already stopped */ }
-      }, XFADE_TIME * 1000 + 20);
+        try { oldSource.stop(); oldSource.disconnect(); oldGain.disconnect(); } catch { /* */ }
+      }, RAMP_TIME * 1000 + 20);
     } else {
-      // First play — no crossfade needed, just start cleanly
-      newGain.gain.setValueAtTime(params.amplitude, now);
+      newGain.gain.setValueAtTime(1, now);
       newSource.start(now);
     }
 
-    this.sourceNode = newSource;
-    this.gainNode = newGain;
+    master.gain.setValueAtTime(params.amplitude, now);
+    this.noiseSource = newSource;
+    this.noiseGain = newGain;
+    this.webMode = 'buf';
+  }
+
+  private teardownOsc(): void {
+    if (this.oscillator) {
+      try { this.oscillator.stop(); this.oscillator.disconnect(); } catch { /* */ }
+      this.oscillator = null;
+    }
+  }
+
+  private teardownNoiseBuf(): void {
+    if (this.noiseSource) {
+      try { this.noiseSource.stop(); this.noiseSource.disconnect(); } catch { /* */ }
+      this.noiseSource = null;
+    }
+    if (this.noiseGain) {
+      try { this.noiseGain.disconnect(); } catch { /* */ }
+      this.noiseGain = null;
+    }
   }
 
   private async stopWeb(): Promise<void> {
-    // Fade out quickly to avoid click
-    if (this.gainNode && this.audioCtx) {
+    if (this.masterGain && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.gainNode.gain.linearRampToValueAtTime(0, now + 0.06);
+      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.06);
       await new Promise((r) => setTimeout(r, 80));
     }
-    if (this.sourceNode) {
-      try {
-        this.sourceNode.stop();
-        this.sourceNode.disconnect();
-      } catch { /* already stopped */ }
-      this.sourceNode = null;
+    this.teardownOsc();
+    this.teardownNoiseBuf();
+    if (this.masterGain) {
+      try { this.masterGain.disconnect(); } catch { /* */ }
+      this.masterGain = null;
     }
-    if (this.gainNode) {
-      try { this.gainNode.disconnect(); } catch { /* */ }
-      this.gainNode = null;
-    }
+    this.webMode = null;
   }
 
   // ── Native (expo-av) ──────────────────────────────────────────
 
   private async playNative(params: AudioParams): Promise<void> {
-    // Dynamic imports to avoid web bundling issues
     const { Audio } = await import('expo-av');
     const { File, Paths } = await import('expo-file-system');
 
