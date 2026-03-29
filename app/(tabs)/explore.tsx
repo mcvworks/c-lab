@@ -91,9 +91,9 @@ const EXPLORE_PRESETS: QuickPreset<ExploreQuickPreset>[] = [
 
 export default function ExploreScreen() {
   const {
-    sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, isPlaying,
+    sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, isPlaying,
     setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType,
-    setDetune, setPan, setFrequencyScale, setHarmonic,
+    setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease,
     play, stop, reset,
   } = useAudioStore();
 
@@ -104,12 +104,12 @@ export default function ExploreScreen() {
   const handleSavePreset = useCallback(async (name: string) => {
     const settings: ExploreSettings = {
       sourceMode, frequency, amplitude, waveform, noiseType,
-      detune, pan, frequencyScale, harmonics,
+      detune, pan, frequencyScale, harmonics, attack, release,
     };
     await savePreset(name, 'explore', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Explore Preset'}" saved to Library.`);
-  }, [sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, savePreset]);
+  }, [sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, savePreset]);
 
   // Ensure presets are loaded
   const presetLoaded = usePresetStore((s) => s.loaded);
@@ -137,9 +137,11 @@ export default function ExploreScreen() {
       } else {
         for (let i = 0; i < 3; i++) setHarmonic(i, 0);
       }
+      setAttack(s.attack ?? 0.05);
+      setRelease(s.release ?? 0.1);
       setPendingLoad(null);
     }
-  }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic]);
+  }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease]);
 
   const handleQuickPreset = useCallback((p: ExploreQuickPreset) => {
     setSourceMode(p.sourceMode);
@@ -147,11 +149,13 @@ export default function ExploreScreen() {
     setNoiseType(p.noiseType);
     setFrequency(p.frequency);
     setAmplitude(p.amplitude);
-    // Reset detune, pan, and harmonics for quick presets
+    // Reset detune, pan, harmonics, and envelope for quick presets
     setDetune(0);
     setPan(0);
     for (let i = 0; i < 3; i++) setHarmonic(i, 0);
-  }, [setSourceMode, setWaveform, setNoiseType, setFrequency, setAmplitude, setDetune, setPan, setHarmonic]);
+    setAttack(0.05);
+    setRelease(0.1);
+  }, [setSourceMode, setWaveform, setNoiseType, setFrequency, setAmplitude, setDetune, setPan, setHarmonic, setAttack, setRelease]);
 
   // Determine active quick preset index
   const activePresetIndex = EXPLORE_PRESETS.findIndex((p) => {
@@ -163,7 +167,8 @@ export default function ExploreScreen() {
       && s.noiseType === noiseType
       && detune === 0
       && pan === 0
-      && harmonics[0] === 0 && harmonics[1] === 0 && harmonics[2] === 0;
+      && harmonics[0] === 0 && harmonics[1] === 0 && harmonics[2] === 0
+      && attack === 0.05 && release === 0.1;
   });
 
   const { contentWidth, vizHeight, isTablet } = useResponsive();
@@ -434,6 +439,33 @@ export default function ExploreScreen() {
             <Text style={styles.panEndLabel}>L</Text>
             <Text style={styles.panEndLabel}>R</Text>
           </View>
+        </Card>
+
+        {/* Envelope */}
+        <SectionHeader title="ENVELOPE" label />
+        <Card style={styles.card}>
+          <PrimarySlider
+            label="Attack"
+            value={attack}
+            onValueChange={setAttack}
+            min={0}
+            max={2}
+            step={0.01}
+            formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+          />
+          <PrimarySlider
+            label="Release"
+            value={release}
+            onValueChange={setRelease}
+            min={0}
+            max={2}
+            step={0.01}
+            formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+            style={styles.slider}
+          />
+          <Text style={styles.noiseHint}>
+            Attack fades in on play. Release fades out on stop. Small values feel snappy; larger values create smooth transitions.
+          </Text>
         </Card>
 
         {/* Playback Controls */}

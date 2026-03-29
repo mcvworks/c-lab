@@ -1,0 +1,23 @@
+# Handoff
+- Task: 023 — Explore: attack/release envelope
+- Status: done
+- Summary: Added attack and release envelope controls to the Explore tab. Tones/noise fade in on play (attack) and fade out on stop (release) instead of instant on/off.
+- Files Changed:
+  - `src/audio/types.ts` — Added `EnvelopeParams` interface (attack, release), added to `AudioParams` union, exported `DEFAULT_ENVELOPE`
+  - `src/audio/index.ts` — Exported `EnvelopeParams` type and `DEFAULT_ENVELOPE`
+  - `src/audio/ToneGenerator.ts` — Fresh tone/noise play uses attack ramp (gain 0→target); stop uses release duration instead of fixed 0.06s
+  - `src/state/useAudioStore.ts` — Added `attack`/`release` state (defaults 0.05s/0.1s), `setAttack`/`setRelease` actions, included in `buildParams`
+  - `src/types/preset.ts` — Added optional `attack`/`release` to `ExploreSettings`
+  - `app/(tabs)/explore.tsx` — New Envelope section with Attack/Release sliders (0–2s), wired to preset save/load/quick-presets/reset
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Explore tab
+  - Set attack to ~1s, press Play — tone should fade in audibly over 1 second
+  - Set release to ~1s, press Stop — tone should fade out audibly over 1 second
+  - With defaults (0.05s/0.1s), play/stop should feel snappy but click-free
+  - Save a preset with custom attack/release, reload from Library — values should restore
+  - Quick presets should reset attack=0.05, release=0.1
+  - Reset button should clear envelope to defaults
+- Blockers: None
+- Next Recommended Task: 024 (cymatics waveform selector)
+- Notes: Attack only applies on initial play (not parameter updates while playing). Release minimum is clamped to 0.02s to prevent clicks even at 0. Envelope fields are optional in presets for backward compatibility.

@@ -13,6 +13,8 @@ interface AudioState {
   pan: number;
   frequencyScale: FrequencyScale;
   harmonics: [number, number, number]; // gain 0–1 for 2nd, 3rd, 4th overtones
+  attack: number; // envelope attack in seconds (0–2)
+  release: number; // envelope release in seconds (0–2)
   isPlaying: boolean;
 
   // Actions
@@ -25,6 +27,8 @@ interface AudioState {
   setPan: (pan: number) => void;
   setFrequencyScale: (scale: FrequencyScale) => void;
   setHarmonic: (index: number, value: number) => void;
+  setAttack: (attack: number) => void;
+  setRelease: (release: number) => void;
   play: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -43,9 +47,9 @@ function getGenerator(): ToneGenerator {
 /** Build AudioParams from current store state */
 function buildParams(s: AudioState) {
   if (s.sourceMode === 'noise') {
-    return { mode: 'noise' as const, amplitude: s.amplitude, noiseType: s.noiseType, pan: s.pan };
+    return { mode: 'noise' as const, amplitude: s.amplitude, noiseType: s.noiseType, pan: s.pan, attack: s.attack, release: s.release };
   }
-  return { mode: 'tone' as const, frequency: s.frequency, amplitude: s.amplitude, waveform: s.waveform, detune: s.detune, pan: s.pan, harmonics: s.harmonics };
+  return { mode: 'tone' as const, frequency: s.frequency, amplitude: s.amplitude, waveform: s.waveform, detune: s.detune, pan: s.pan, harmonics: s.harmonics, attack: s.attack, release: s.release };
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
@@ -58,6 +62,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   pan: 0,
   frequencyScale: 'linear',
   harmonics: [0, 0, 0] as [number, number, number],
+  attack: 0.05,
+  release: 0.1,
   isPlaying: false,
 
   setFrequency: (frequency) => {
@@ -129,6 +135,14 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     }
   },
 
+  setAttack: (attack) => {
+    set({ attack });
+  },
+
+  setRelease: (release) => {
+    set({ release });
+  },
+
   play: async () => {
     const s = get();
     await getGenerator().play(buildParams(s));
@@ -155,6 +169,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       pan: 0,
       frequencyScale: 'linear',
       harmonics: [0, 0, 0] as [number, number, number],
+      attack: 0.05,
+      release: 0.1,
       isPlaying: false,
     });
   },

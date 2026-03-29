@@ -10,6 +10,8 @@ export interface ExploreSettings {
   pan?: number;
   frequencyScale?: FrequencyScale;
   harmonics?: [number, number, number];
+  attack?: number;
+  release?: number;
 }
 
 export interface AmbientLayerSettings {

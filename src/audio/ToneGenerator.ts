@@ -184,8 +184,14 @@ export class ToneGenerator {
       }
       smoothRamp(master.gain, params.amplitude, now);
     } else {
-      // Create fresh oscillator
-      master.gain.setValueAtTime(params.amplitude, now);
+      // Create fresh oscillator — apply attack envelope
+      const attackTime = Math.max(0, params.attack);
+      if (attackTime > 0) {
+        master.gain.setValueAtTime(0, now);
+        master.gain.linearRampToValueAtTime(params.amplitude, now + attackTime);
+      } else {
+        master.gain.setValueAtTime(params.amplitude, now);
+      }
 
       this.oscillator = ctx.createOscillator();
       this.oscillator.type = OSC_TYPE[params.waveform];
@@ -300,12 +306,21 @@ export class ToneGenerator {
       setTimeout(() => {
         try { oldSource.stop(); oldSource.disconnect(); oldGain.disconnect(); } catch { /* */ }
       }, RAMP_TIME * 1000 + 20);
+
+      smoothRamp(master.gain, params.amplitude, now);
     } else {
+      // Fresh start — apply attack envelope
+      const attackTime = Math.max(0, params.attack);
       newGain.gain.setValueAtTime(1, now);
       newSource.start(now);
-    }
 
-    smoothRamp(master.gain, params.amplitude, now);
+      if (attackTime > 0) {
+        master.gain.setValueAtTime(0, now);
+        master.gain.linearRampToValueAtTime(params.amplitude, now + attackTime);
+      } else {
+        master.gain.setValueAtTime(params.amplitude, now);
+      }
+    }
     if (this.panner) {
       smoothRamp(this.panner.pan, params.pan, now);
     }
@@ -389,9 +404,10 @@ export class ToneGenerator {
 
   private async stopWeb(): Promise<void> {
     if (this.masterGain && this.audioCtx) {
+      const releaseTime = Math.max(0.02, this.currentParams?.release ?? 0.1);
       const now = this.audioCtx.currentTime;
-      smoothRamp(this.masterGain.gain, 0, now, 0.06);
-      await new Promise((r) => setTimeout(r, 80));
+      smoothRamp(this.masterGain.gain, 0, now, releaseTime);
+      await new Promise((r) => setTimeout(r, releaseTime * 1000 + 20));
     }
     this.teardownOsc();
     this.teardownNoiseBuf();

@@ -4,6 +4,11 @@ export type SourceMode = 'tone' | 'noise';
 
 export type FrequencyScale = 'linear' | 'log';
 
+export interface EnvelopeParams {
+  attack: number; // seconds (0–2)
+  release: number; // seconds (0–2)
+}
+
 export interface ToneParams {
   frequency: number;
   amplitude: number;
@@ -23,10 +28,15 @@ export interface NoiseExtraParams {
 }
 
 export type AudioParams =
-  | ({ mode: 'tone' } & ToneParams)
-  | ({ mode: 'noise' } & NoiseParams & NoiseExtraParams);
+  | ({ mode: 'tone' } & ToneParams & EnvelopeParams)
+  | ({ mode: 'noise' } & NoiseParams & NoiseExtraParams & EnvelopeParams);
 
 export const SAMPLE_RATE = 44100;
+export const DEFAULT_ENVELOPE: EnvelopeParams = {
+  attack: 0.05,
+  release: 0.1,
+};
+
 export const DEFAULT_TONE: ToneParams = {
   frequency: 440,
   amplitude: 0.5,
