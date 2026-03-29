@@ -15,6 +15,13 @@ const OSC_TYPE: Record<WaveformType, OscillatorType> = {
 // Ramp duration for smooth parameter transitions (seconds)
 const RAMP_TIME = 0.03;
 
+/** Cancel any scheduled automation, anchor at the current value, then ramp. */
+function smoothRamp(param: AudioParam, target: number, now: number, duration = RAMP_TIME): void {
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(param.value, now);
+  param.linearRampToValueAtTime(target, now + duration);
+}
+
 /**
  * Manages tone/noise generation and playback.
  *
@@ -33,6 +40,14 @@ export class ToneGenerator {
 
   // Web Audio — tone mode (oscillator-based)
   private oscillator: OscillatorNode | null = null;
+
+  // Harmonic oscillators (2x, 3x, 4x fundamental)
+  private harmonicOscs: (OscillatorNode | null)[] = [null, null, null];
+  private harmonicGains: (GainNode | null)[] = [null, null, null];
+  private static readonly HARMONIC_MULTIPLIERS = [2, 3, 4];
+
+  // Web Audio — panning
+  private panner: StereoPannerNode | null = null;
 
   // Web Audio — noise mode (buffer-based)
   private noiseSource: AudioBufferSourceNode | null = null;
@@ -100,7 +115,10 @@ export class ToneGenerator {
     const ctx = this.getAudioContext();
     if (!this.masterGain) {
       this.masterGain = ctx.createGain();
-      this.masterGain.connect(ctx.destination);
+      this.panner = ctx.createStereoPanner();
+      this.panner.pan.value = 0;
+      this.masterGain.connect(this.panner);
+      this.panner.connect(ctx.destination);
     }
     return this.masterGain;
   }
@@ -124,18 +142,47 @@ export class ToneGenerator {
     const master = this.ensureMasterGain();
     const now = ctx.currentTime;
 
-    // If switching from noise → tone, tear down noise first
+    // If switching from noise → tone, fade out noise first
     if (this.webMode === 'buf') {
-      this.teardownNoiseBuf();
+      this.fadeOutNoiseBuf(now);
     }
 
     if (this.oscillator && this.webMode === 'osc') {
-      // Already have an oscillator running — just ramp parameters
-      this.oscillator.frequency.linearRampToValueAtTime(params.frequency, now + RAMP_TIME);
+      // Already have an oscillator running — ramp parameters smoothly
       if (this.oscillator.type !== OSC_TYPE[params.waveform]) {
-        this.oscillator.type = OSC_TYPE[params.waveform];
+        // Waveform type can't be ramped — crossfade to a new oscillator
+        const oldOsc = this.oscillator;
+        const oldOscGain = ctx.createGain();
+        oldOscGain.gain.setValueAtTime(1, now);
+        oldOsc.disconnect();
+        oldOsc.connect(oldOscGain);
+        oldOscGain.connect(master);
+
+        const newOsc = ctx.createOscillator();
+        newOsc.type = OSC_TYPE[params.waveform];
+        newOsc.frequency.setValueAtTime(params.frequency, now);
+        newOsc.detune.setValueAtTime(params.detune, now);
+        const newOscGain = ctx.createGain();
+        newOscGain.gain.setValueAtTime(0, now);
+        newOsc.connect(newOscGain);
+        newOscGain.connect(master);
+        newOsc.start(now);
+
+        // Crossfade
+        oldOscGain.gain.linearRampToValueAtTime(0, now + RAMP_TIME);
+        newOscGain.gain.linearRampToValueAtTime(1, now + RAMP_TIME);
+
+        // Clean up old oscillator after crossfade
+        setTimeout(() => {
+          try { oldOsc.stop(); oldOsc.disconnect(); oldOscGain.disconnect(); } catch { /* */ }
+        }, RAMP_TIME * 1000 + 20);
+
+        this.oscillator = newOsc;
+      } else {
+        smoothRamp(this.oscillator.frequency, params.frequency, now);
+        smoothRamp(this.oscillator.detune, params.detune, now);
       }
-      master.gain.linearRampToValueAtTime(params.amplitude, now + RAMP_TIME);
+      smoothRamp(master.gain, params.amplitude, now);
     } else {
       // Create fresh oscillator
       master.gain.setValueAtTime(params.amplitude, now);
@@ -143,11 +190,76 @@ export class ToneGenerator {
       this.oscillator = ctx.createOscillator();
       this.oscillator.type = OSC_TYPE[params.waveform];
       this.oscillator.frequency.setValueAtTime(params.frequency, now);
+      this.oscillator.detune.setValueAtTime(params.detune, now);
       this.oscillator.connect(master);
       this.oscillator.start(now);
     }
 
+    // Smooth-ramp panner
+    if (this.panner) {
+      smoothRamp(this.panner.pan, params.pan, now);
+    }
+
+    // Harmonic oscillators (2x, 3x, 4x)
+    this.updateHarmonics(params, ctx, master, now);
+
     this.webMode = 'osc';
+  }
+
+  /** Create or update harmonic oscillators to match the fundamental. */
+  private updateHarmonics(
+    params: AudioParams & { mode: 'tone' },
+    ctx: AudioContext,
+    master: GainNode,
+    now: number,
+  ): void {
+    for (let i = 0; i < 3; i++) {
+      const mult = ToneGenerator.HARMONIC_MULTIPLIERS[i];
+      const targetGain = params.harmonics[i];
+      const freq = params.frequency * mult;
+
+      if (this.harmonicOscs[i]) {
+        // Update existing harmonic oscillator
+        smoothRamp(this.harmonicOscs[i]!.frequency, freq, now);
+        smoothRamp(this.harmonicOscs[i]!.detune, params.detune, now);
+        smoothRamp(this.harmonicGains[i]!.gain, targetGain, now);
+
+        // Match waveform type
+        if (this.harmonicOscs[i]!.type !== OSC_TYPE[params.waveform]) {
+          this.harmonicOscs[i]!.type = OSC_TYPE[params.waveform];
+        }
+      } else {
+        // Create new harmonic oscillator
+        const osc = ctx.createOscillator();
+        osc.type = OSC_TYPE[params.waveform];
+        osc.frequency.setValueAtTime(freq, now);
+        osc.detune.setValueAtTime(params.detune, now);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(targetGain, now);
+
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(now);
+
+        this.harmonicOscs[i] = osc;
+        this.harmonicGains[i] = gain;
+      }
+    }
+  }
+
+  /** Tear down all harmonic oscillators. */
+  private teardownHarmonics(): void {
+    for (let i = 0; i < 3; i++) {
+      if (this.harmonicOscs[i]) {
+        try { this.harmonicOscs[i]!.stop(); this.harmonicOscs[i]!.disconnect(); } catch { /* */ }
+        this.harmonicOscs[i] = null;
+      }
+      if (this.harmonicGains[i]) {
+        try { this.harmonicGains[i]!.disconnect(); } catch { /* */ }
+        this.harmonicGains[i] = null;
+      }
+    }
   }
 
   /** Noise mode: looped AudioBuffer with crossfade on switch. */
@@ -156,9 +268,9 @@ export class ToneGenerator {
     const master = this.ensureMasterGain();
     const now = ctx.currentTime;
 
-    // If switching from tone → noise, tear down oscillator first
+    // If switching from tone → noise, fade out oscillator first
     if (this.webMode === 'osc') {
-      this.teardownOsc();
+      this.fadeOutOsc(now);
     }
 
     const samples = generateNoiseSamples(params.amplitude, params.noiseType);
@@ -193,7 +305,10 @@ export class ToneGenerator {
       newSource.start(now);
     }
 
-    master.gain.setValueAtTime(params.amplitude, now);
+    smoothRamp(master.gain, params.amplitude, now);
+    if (this.panner) {
+      smoothRamp(this.panner.pan, params.pan, now);
+    }
     this.noiseSource = newSource;
     this.noiseGain = newGain;
     this.webMode = 'buf';
@@ -204,6 +319,43 @@ export class ToneGenerator {
       try { this.oscillator.stop(); this.oscillator.disconnect(); } catch { /* */ }
       this.oscillator = null;
     }
+    this.teardownHarmonics();
+  }
+
+  /** Fade out the current oscillator and harmonics over RAMP_TIME and tear down after. */
+  private fadeOutOsc(now: number): void {
+    const osc = this.oscillator;
+    if (!osc || !this.masterGain) {
+      this.teardownOsc();
+      return;
+    }
+    // Route through a temporary gain to fade without affecting master
+    const ctx = this.getAudioContext();
+    const fadeGain = ctx.createGain();
+    fadeGain.gain.setValueAtTime(1, now);
+    fadeGain.gain.linearRampToValueAtTime(0, now + RAMP_TIME);
+    osc.disconnect();
+    osc.connect(fadeGain);
+    fadeGain.connect(this.masterGain);
+    this.oscillator = null;
+
+    // Fade out harmonics too
+    for (let i = 0; i < 3; i++) {
+      if (this.harmonicGains[i]) {
+        smoothRamp(this.harmonicGains[i]!.gain, 0, now);
+      }
+    }
+    const hOscs = [...this.harmonicOscs];
+    const hGains = [...this.harmonicGains];
+    this.harmonicOscs = [null, null, null];
+    this.harmonicGains = [null, null, null];
+
+    setTimeout(() => {
+      try { osc.stop(); osc.disconnect(); fadeGain.disconnect(); } catch { /* */ }
+      for (let i = 0; i < 3; i++) {
+        try { hOscs[i]?.stop(); hOscs[i]?.disconnect(); hGains[i]?.disconnect(); } catch { /* */ }
+      }
+    }, RAMP_TIME * 1000 + 20);
   }
 
   private teardownNoiseBuf(): void {
@@ -217,10 +369,28 @@ export class ToneGenerator {
     }
   }
 
+  /** Fade out the current noise buffer over RAMP_TIME and tear down after. */
+  private fadeOutNoiseBuf(now: number): void {
+    const src = this.noiseSource;
+    const gain = this.noiseGain;
+    if (!src || !gain) {
+      this.teardownNoiseBuf();
+      return;
+    }
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + RAMP_TIME);
+    this.noiseSource = null;
+    this.noiseGain = null;
+    setTimeout(() => {
+      try { src.stop(); src.disconnect(); gain.disconnect(); } catch { /* */ }
+    }, RAMP_TIME * 1000 + 20);
+  }
+
   private async stopWeb(): Promise<void> {
     if (this.masterGain && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.06);
+      smoothRamp(this.masterGain.gain, 0, now, 0.06);
       await new Promise((r) => setTimeout(r, 80));
     }
     this.teardownOsc();
@@ -228,6 +398,10 @@ export class ToneGenerator {
     if (this.masterGain) {
       try { this.masterGain.disconnect(); } catch { /* */ }
       this.masterGain = null;
+    }
+    if (this.panner) {
+      try { this.panner.disconnect(); } catch { /* */ }
+      this.panner = null;
     }
     this.webMode = null;
   }
@@ -302,8 +476,10 @@ export class ToneGenerator {
 function paramsEqual(a: AudioParams, b: AudioParams): boolean {
   if (a.mode !== b.mode) return false;
   if (Math.abs(a.amplitude - b.amplitude) >= 0.005) return false;
+  if (Math.abs(a.pan - b.pan) >= 0.005) return false;
   if (a.mode === 'tone' && b.mode === 'tone') {
-    return a.frequency === b.frequency && a.waveform === b.waveform;
+    return a.frequency === b.frequency && a.waveform === b.waveform && a.detune === b.detune
+      && a.harmonics[0] === b.harmonics[0] && a.harmonics[1] === b.harmonics[1] && a.harmonics[2] === b.harmonics[2];
   }
   if (a.mode === 'noise' && b.mode === 'noise') {
     return a.noiseType === b.noiseType;

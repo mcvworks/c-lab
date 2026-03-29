@@ -1,4 +1,4 @@
-import type { WaveformType, NoiseType, SourceMode } from '@/src/audio';
+import type { WaveformType, NoiseType, SourceMode, FrequencyScale } from '@/src/audio';
 
 export interface ExploreSettings {
   sourceMode: SourceMode;
@@ -6,6 +6,10 @@ export interface ExploreSettings {
   amplitude: number;
   waveform: WaveformType;
   noiseType: NoiseType;
+  detune?: number;
+  pan?: number;
+  frequencyScale?: FrequencyScale;
+  harmonics?: [number, number, number];
 }
 
 export interface AmbientLayerSettings {

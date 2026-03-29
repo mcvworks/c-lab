@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ToneGenerator } from '@/src/audio';
-import type { WaveformType, NoiseType, SourceMode } from '@/src/audio';
+import type { WaveformType, NoiseType, SourceMode, FrequencyScale } from '@/src/audio';
 
 interface AudioState {
   // Shared audio parameters
@@ -9,6 +9,10 @@ interface AudioState {
   waveform: WaveformType;
   noiseType: NoiseType;
   sourceMode: SourceMode;
+  detune: number;
+  pan: number;
+  frequencyScale: FrequencyScale;
+  harmonics: [number, number, number]; // gain 0–1 for 2nd, 3rd, 4th overtones
   isPlaying: boolean;
 
   // Actions
@@ -17,6 +21,10 @@ interface AudioState {
   setWaveform: (waveform: WaveformType) => void;
   setNoiseType: (noiseType: NoiseType) => void;
   setSourceMode: (mode: SourceMode) => void;
+  setDetune: (detune: number) => void;
+  setPan: (pan: number) => void;
+  setFrequencyScale: (scale: FrequencyScale) => void;
+  setHarmonic: (index: number, value: number) => void;
   play: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -32,46 +40,54 @@ function getGenerator(): ToneGenerator {
   return generator;
 }
 
+/** Build AudioParams from current store state */
+function buildParams(s: AudioState) {
+  if (s.sourceMode === 'noise') {
+    return { mode: 'noise' as const, amplitude: s.amplitude, noiseType: s.noiseType, pan: s.pan };
+  }
+  return { mode: 'tone' as const, frequency: s.frequency, amplitude: s.amplitude, waveform: s.waveform, detune: s.detune, pan: s.pan, harmonics: s.harmonics };
+}
+
 export const useAudioStore = create<AudioState>((set, get) => ({
   frequency: 440,
   amplitude: 0.5,
   waveform: 'sine',
   noiseType: 'white',
   sourceMode: 'tone',
+  detune: 0,
+  pan: 0,
+  frequencyScale: 'linear',
+  harmonics: [0, 0, 0] as [number, number, number],
   isPlaying: false,
 
   setFrequency: (frequency) => {
     set({ frequency });
-    const { isPlaying, sourceMode, amplitude, waveform } = get();
-    if (isPlaying && sourceMode === 'tone') {
-      getGenerator().updateParams({ mode: 'tone', frequency, amplitude, waveform });
+    const s = get();
+    if (s.isPlaying && s.sourceMode === 'tone') {
+      getGenerator().updateParams(buildParams(s));
     }
   },
 
   setAmplitude: (amplitude) => {
     set({ amplitude });
-    const { isPlaying, sourceMode, frequency, waveform, noiseType } = get();
-    if (!isPlaying) return;
-    if (sourceMode === 'tone') {
-      getGenerator().updateParams({ mode: 'tone', frequency, amplitude, waveform });
-    } else {
-      getGenerator().updateParams({ mode: 'noise', amplitude, noiseType });
-    }
+    const s = get();
+    if (!s.isPlaying) return;
+    getGenerator().updateParams(buildParams(s));
   },
 
   setWaveform: (waveform) => {
     set({ waveform });
-    const { isPlaying, sourceMode, frequency, amplitude } = get();
-    if (isPlaying && sourceMode === 'tone') {
-      getGenerator().updateParams({ mode: 'tone', frequency, amplitude, waveform });
+    const s = get();
+    if (s.isPlaying && s.sourceMode === 'tone') {
+      getGenerator().updateParams(buildParams(s));
     }
   },
 
   setNoiseType: (noiseType) => {
     set({ noiseType });
-    const { isPlaying, sourceMode, amplitude } = get();
-    if (isPlaying && sourceMode === 'noise') {
-      getGenerator().updateParams({ mode: 'noise', amplitude, noiseType });
+    const s = get();
+    if (s.isPlaying && s.sourceMode === 'noise') {
+      getGenerator().updateParams(buildParams(s));
     }
   },
 
@@ -84,13 +100,38 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     set({ sourceMode });
   },
 
-  play: async () => {
-    const { sourceMode, frequency, amplitude, waveform, noiseType } = get();
-    if (sourceMode === 'noise') {
-      await getGenerator().play({ mode: 'noise', amplitude, noiseType });
-    } else {
-      await getGenerator().play({ mode: 'tone', frequency, amplitude, waveform });
+  setDetune: (detune) => {
+    set({ detune });
+    const s = get();
+    if (s.isPlaying && s.sourceMode === 'tone') {
+      getGenerator().updateParams(buildParams(s));
     }
+  },
+
+  setPan: (pan) => {
+    set({ pan });
+    const s = get();
+    if (!s.isPlaying) return;
+    getGenerator().updateParams(buildParams(s));
+  },
+
+  setFrequencyScale: (frequencyScale) => {
+    set({ frequencyScale });
+  },
+
+  setHarmonic: (index, value) => {
+    const harmonics = [...get().harmonics] as [number, number, number];
+    harmonics[index] = value;
+    set({ harmonics });
+    const s = get();
+    if (s.isPlaying && s.sourceMode === 'tone') {
+      getGenerator().updateParams(buildParams(s));
+    }
+  },
+
+  play: async () => {
+    const s = get();
+    await getGenerator().play(buildParams(s));
     set({ isPlaying: true });
   },
 
@@ -110,6 +151,10 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       waveform: 'sine',
       noiseType: 'white',
       sourceMode: 'tone',
+      detune: 0,
+      pan: 0,
+      frequencyScale: 'linear',
+      harmonics: [0, 0, 0] as [number, number, number],
       isPlaying: false,
     });
   },

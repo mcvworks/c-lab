@@ -1,0 +1,25 @@
+# Handoff
+- Task: 022 — Explore: harmonics mix (overtone sliders)
+- Status: done
+- Summary: Added 3 harmonic oscillators (2nd, 3rd, 4th overtones) to the Explore tone generator with individual gain sliders in a collapsible card.
+- Files Changed:
+  - `src/audio/types.ts` — Added `harmonics: [number, number, number]` to `ToneParams` and `DEFAULT_TONE`
+  - `src/audio/ToneGenerator.ts` — Added harmonic oscillator management (create/update/teardown/fadeout), smooth-ramped gains, frequency/detune/waveform tracking
+  - `src/state/useAudioStore.ts` — Added `harmonics` state and `setHarmonic(index, value)` action, included in `buildParams` and `reset`
+  - `src/types/preset.ts` — Added optional `harmonics` to `ExploreSettings`
+  - `app/(tabs)/explore.tsx` — Collapsible Harmonics card with 3 sliders (0–100% each), preset save/load/reset support
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Explore tab
+  - Play a tone, expand the Harmonics section
+  - Slide 2nd/3rd/4th harmonic sliders — should audibly add overtones
+  - Change base frequency — harmonics should track in real time
+  - Change waveform — harmonics should match the new waveform type
+  - Change detune — harmonics should track detune
+  - Save a preset with non-zero harmonics, load from Library — values should restore
+  - Quick presets should reset all harmonics to 0
+  - Reset button should clear harmonics
+  - No clicks or pops when adjusting sliders
+- Blockers: None
+- Next Recommended Task: 023 (Explore: attack/release)
+- Notes: Harmonics are only active in tone mode. Each harmonic oscillator matches the fundamental's waveform type, frequency multiplier, and detune. All gains are smooth-ramped to prevent audio artifacts. The harmonics card is collapsible to keep the UI clean.
