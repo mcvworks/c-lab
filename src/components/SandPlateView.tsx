@@ -18,6 +18,8 @@ interface SandPlateViewProps {
   /** Optional second frequency for dual-frequency interference mode */
   frequency2?: number;
   waveform2?: WaveformType;
+  /** Override particle damping (0.7–0.98). Stacks with per-material base via averaging. */
+  dampingOverride?: number;
   isPlaying?: boolean;
   isFrozen?: boolean;
   style?: ViewStyle;
@@ -240,6 +242,7 @@ export default function SandPlateView({
   waveform = 'sine',
   frequency2,
   waveform2 = 'sine',
+  dampingOverride,
   isPlaying = false,
   isFrozen = false,
   style,
@@ -249,8 +252,8 @@ export default function SandPlateView({
   const lastTimeRef = useRef<number | null>(null);
   const particlesRef = useRef<Particle[]>(initParticles(PARTICLE_COUNT, plateShape));
 
-  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, isPlaying, isFrozen });
-  propsRef.current = { frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, isPlaying, isFrozen };
+  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, dampingOverride, isPlaying, isFrozen });
+  propsRef.current = { frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, dampingOverride, isPlaying, isFrozen };
 
   /** Accumulated simulation time for time-varying jitter */
   const simTimeRef = useRef(0);
@@ -272,7 +275,7 @@ export default function SandPlateView({
   }, [plateShape, size]);
 
   const simulateStep = useCallback((dt: number) => {
-    const { frequency: freq, amplitude: amp, plateShape: shape, particleStyle: ps, waveform: wf, frequency2: freq2, waveform2: wf2, isFrozen: frozen } = propsRef.current;
+    const { frequency: freq, amplitude: amp, plateShape: shape, particleStyle: ps, waveform: wf, frequency2: freq2, waveform2: wf2, dampingOverride: dampOver, isFrozen: frozen } = propsRef.current;
     if (frozen) return;
 
     simTimeRef.current += dt;
@@ -281,7 +284,8 @@ export default function SandPlateView({
     const particles = particlesRef.current;
     const phys = PARTICLE_PHYSICS[ps];
     const attractStrength = 5.0 * amp * phys.attractMultiplier;
-    const damping = phys.damping;
+    // Average material base with user override when provided
+    const damping = dampOver != null ? (phys.damping + dampOver) * 0.5 : phys.damping;
     // Direct position vibration — bypasses velocity/damping so it stays visible
     const vibeRadius = 0.008 * amp * phys.vibeMultiplier;
 

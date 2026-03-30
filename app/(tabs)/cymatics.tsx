@@ -60,6 +60,11 @@ const OSC_TYPE: Record<WaveformType, OscillatorType> = {
   triangle: 'triangle',
 };
 
+const SWEEP_SPEEDS = ['slow', 'medium', 'fast'] as const;
+type SweepSpeed = (typeof SWEEP_SPEEDS)[number];
+const SWEEP_SPEED_LABELS: Record<SweepSpeed, string> = { slow: 'Slow', medium: 'Med', fast: 'Fast' };
+const SWEEP_HZ_PER_SEC: Record<SweepSpeed, number> = { slow: 20, medium: 60, fast: 150 };
+
 // ── Quick presets ─────────────────────────────────────────────────────
 interface CymaticsQuickPreset {
   frequency: number;
@@ -68,6 +73,7 @@ interface CymaticsQuickPreset {
   dualFreq?: boolean;
   frequency2?: number;
   waveform2?: WaveformType;
+  damping?: number;
   plateShape: PlateShape;
   particleStyle: ParticleStyle;
 }
@@ -77,7 +83,7 @@ const CYMATICS_PRESETS: QuickPreset<CymaticsQuickPreset>[] = [
   { label: 'Crystal Star', settings: { frequency: 528, amplitude: 0.75, waveform: 'sine',     plateShape: 'hexagon', particleStyle: 'salt'  } },
   { label: 'Metal Grid',   settings: { frequency: 396, amplitude: 0.8,  waveform: 'square',   plateShape: 'square',  particleStyle: 'metal' } },
   { label: 'Interference', settings: { frequency: 440, amplitude: 0.65, waveform: 'sine', dualFreq: true, frequency2: 660, waveform2: 'sine', plateShape: 'circle', particleStyle: 'salt' } },
-  { label: 'Deep Ripple',  settings: { frequency: 174, amplitude: 0.55, waveform: 'triangle', plateShape: 'circle',  particleStyle: 'sand'  } },
+  { label: 'Drifty',       settings: { frequency: 285, amplitude: 0.6,  waveform: 'sine', damping: 0.96, plateShape: 'circle', particleStyle: 'sand' } },
   { label: 'Buzz Hex',     settings: { frequency: 285, amplitude: 0.7,  waveform: 'saw',      plateShape: 'hexagon', particleStyle: 'metal' } },
 ];
 
@@ -91,6 +97,19 @@ export default function CymaticsScreen() {
   const [dualFreq, setDualFreq] = useState(false);
   const [frequency2, setFrequency2] = useState(660);
   const [waveform2, setWaveform2] = useState<WaveformType>('sine');
+
+  // Damping override (null = use material default)
+  const [damping, setDamping] = useState<number | null>(null);
+
+  // Sweep state
+  const [sweepEnabled, setSweepEnabled] = useState(false);
+  const [sweepStart, setSweepStart] = useState(100);
+  const [sweepEnd, setSweepEnd] = useState(800);
+  const [sweepSpeed, setSweepSpeed] = useState<SweepSpeed>('medium');
+  const [sweepLoop, setSweepLoop] = useState(true);
+  const sweepRafRef = useRef<number | null>(null);
+  const sweepLastTimeRef = useRef<number | null>(null);
+  const sweepDirRef = useRef<1 | -1>(1); // 1 = forward, -1 = reverse
 
   // Second oscillator refs (Web Audio)
   const osc2Ref = useRef<OscillatorNode | null>(null);
@@ -185,13 +204,72 @@ export default function CymaticsScreen() {
     };
   }, [stopOsc2Internal]);
 
+  // ── Sweep animation loop ──────────────────────────────────────────
+  useEffect(() => {
+    if (!sweepEnabled || !isPlaying) {
+      if (sweepRafRef.current != null) {
+        cancelAnimationFrame(sweepRafRef.current);
+        sweepRafRef.current = null;
+      }
+      sweepLastTimeRef.current = null;
+      return;
+    }
+
+    // Initialize sweep at start frequency
+    sweepDirRef.current = 1;
+    setFrequency(sweepStart);
+
+    const tick = (time: number) => {
+      if (sweepLastTimeRef.current != null) {
+        const dt = Math.min(0.1, (time - sweepLastTimeRef.current) / 1000);
+        const hzPerSec = SWEEP_HZ_PER_SEC[sweepSpeed];
+        const currentFreq = useAudioStore.getState().frequency;
+        let next = currentFreq + hzPerSec * dt * sweepDirRef.current;
+
+        if (sweepDirRef.current === 1 && next >= sweepEnd) {
+          next = sweepEnd;
+          if (sweepLoop) {
+            sweepDirRef.current = -1;
+          } else {
+            setSweepEnabled(false);
+            return;
+          }
+        } else if (sweepDirRef.current === -1 && next <= sweepStart) {
+          next = sweepStart;
+          if (sweepLoop) {
+            sweepDirRef.current = 1;
+          } else {
+            setSweepEnabled(false);
+            return;
+          }
+        }
+
+        setFrequency(Math.round(next));
+      }
+      sweepLastTimeRef.current = time;
+      sweepRafRef.current = requestAnimationFrame(tick);
+    };
+
+    sweepRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (sweepRafRef.current != null) {
+        cancelAnimationFrame(sweepRafRef.current);
+        sweepRafRef.current = null;
+      }
+      sweepLastTimeRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sweepEnabled, isPlaying, sweepSpeed, sweepStart, sweepEnd, sweepLoop]);
+
   const handleQuickPreset = useCallback((p: CymaticsQuickPreset) => {
+    setSweepEnabled(false);
     setFrequency(p.frequency);
     setAmplitude(p.amplitude);
     setWaveform(p.waveform);
     setDualFreq(!!p.dualFreq);
     setFrequency2(p.frequency2 ?? Math.round(p.frequency * 1.5));
     setWaveform2(p.waveform2 ?? 'sine');
+    setDamping(p.damping ?? null);
     setPlateShape(p.plateShape);
     setParticleStyle(p.particleStyle);
   }, [setFrequency, setAmplitude, setWaveform]);
@@ -222,11 +300,16 @@ export default function CymaticsScreen() {
       dualFreq: dualFreq || undefined,
       frequency2: dualFreq ? frequency2 : undefined,
       waveform2: dualFreq ? waveform2 : undefined,
+      damping: damping ?? undefined,
+      sweepStart: sweepEnabled ? sweepStart : undefined,
+      sweepEnd: sweepEnabled ? sweepEnd : undefined,
+      sweepSpeed: sweepEnabled ? sweepSpeed : undefined,
+      sweepLoop: sweepEnabled ? sweepLoop : undefined,
     };
     await savePreset(name, 'explore', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Cymatics Preset'}" saved to Library.`);
-  }, [frequency, amplitude, waveform, dualFreq, frequency2, waveform2, savePreset]);
+  }, [frequency, amplitude, waveform, dualFreq, frequency2, waveform2, damping, sweepEnabled, sweepStart, sweepEnd, sweepSpeed, sweepLoop, savePreset]);
 
   // Ensure presets are loaded
   const presetLoaded = usePresetStore((s) => s.loaded);
@@ -255,10 +338,16 @@ export default function CymaticsScreen() {
 
   const handleReset = useCallback(async () => {
     await stop();
+    setSweepEnabled(false);
     setIsFrozen(false);
     setDualFreq(false);
     setFrequency2(660);
     setWaveform2('sine');
+    setDamping(null);
+    setSweepStart(100);
+    setSweepEnd(800);
+    setSweepSpeed('medium');
+    setSweepLoop(true);
     setFrequency(440);
     setAmplitude(0.6);
     setWaveform('sine');
@@ -298,6 +387,7 @@ export default function CymaticsScreen() {
               waveform={waveform}
               frequency2={dualFreq ? frequency2 : undefined}
               waveform2={dualFreq ? waveform2 : undefined}
+              dampingOverride={damping ?? undefined}
               isPlaying={isPlaying}
               isFrozen={isFrozen}
             />
@@ -441,6 +531,99 @@ export default function CymaticsScreen() {
                 {particleStyle === 'salt' && 'Fine white salt — bright and high contrast.'}
                 {particleStyle === 'metal' && 'Iron filings — cool metallic shimmer.'}
               </Text>
+            </Card>
+          </View>
+        </View>
+
+        {/* Sweep & Damping — side by side on tablet */}
+        <View style={isTablet ? styles.tabletRow : undefined}>
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            <SectionHeader title="FREQUENCY SWEEP" label />
+            <Card style={styles.card}>
+              <View style={styles.dualToggleRow}>
+                <Text style={styles.controlLabel}>Auto-Sweep</Text>
+                <Switch
+                  value={sweepEnabled}
+                  onValueChange={setSweepEnabled}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor={colors.textPrimary}
+                />
+              </View>
+
+              {sweepEnabled && (
+                <>
+                  <PrimarySlider
+                    label="Start"
+                    value={sweepStart}
+                    onValueChange={(v) => setSweepStart(Math.round(v))}
+                    min={20}
+                    max={2000}
+                    step={1}
+                    formatValue={(v) => `${Math.round(v)} Hz`}
+                  />
+                  <PrimarySlider
+                    label="End"
+                    value={sweepEnd}
+                    onValueChange={(v) => setSweepEnd(Math.round(v))}
+                    min={20}
+                    max={2000}
+                    step={1}
+                    formatValue={(v) => `${Math.round(v)} Hz`}
+                    style={styles.slider}
+                  />
+                  <Text style={[styles.controlLabel, styles.labelSpacing]}>Speed</Text>
+                  <SegmentedControl
+                    options={SWEEP_SPEEDS}
+                    selected={sweepSpeed}
+                    onSelect={setSweepSpeed}
+                    labels={SWEEP_SPEED_LABELS}
+                  />
+                  <View style={styles.dualToggleRow}>
+                    <Text style={styles.controlLabel}>Loop</Text>
+                    <Switch
+                      value={sweepLoop}
+                      onValueChange={setSweepLoop}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                      thumbColor={colors.textPrimary}
+                    />
+                  </View>
+                  <Text style={styles.hint}>
+                    Sweeps the frequency between start and end values. {sweepLoop ? 'Bounces back and forth continuously.' : 'Stops at end.'}
+                  </Text>
+                </>
+              )}
+            </Card>
+          </View>
+
+          <View style={isTablet ? styles.tabletHalf : undefined}>
+            <SectionHeader title="PHYSICS" label />
+            <Card style={styles.card}>
+              <PrimarySlider
+                label="Damping"
+                value={damping ?? 0.88}
+                onValueChange={(v) => setDamping(v)}
+                min={0.7}
+                max={0.98}
+                step={0.01}
+                formatValue={(v) => {
+                  if (v <= 0.78) return 'Snappy';
+                  if (v <= 0.86) return 'Responsive';
+                  if (v <= 0.92) return 'Normal';
+                  return 'Drifty';
+                }}
+              />
+              <Text style={styles.hint}>
+                Controls how quickly particles settle. Low = snappy response, high = slow gliding momentum.
+                {damping == null ? ' Currently using material default.' : ''}
+              </Text>
+              {damping != null && (
+                <PrimaryButton
+                  title="Reset to Material Default"
+                  variant="ghost"
+                  onPress={() => setDamping(null)}
+                  style={styles.resetDampingButton}
+                />
+              )}
             </Card>
           </View>
         </View>
@@ -602,6 +785,9 @@ const styles = StyleSheet.create({
   },
   tabletHalf: {
     flex: 1,
+  },
+  resetDampingButton: {
+    marginTop: spacing.sm,
   },
   bottomSpacer: {
     height: spacing.xxl,

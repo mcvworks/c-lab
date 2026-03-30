@@ -15,6 +15,11 @@ export interface ExploreSettings {
   dualFreq?: boolean;
   frequency2?: number;
   waveform2?: WaveformType;
+  damping?: number;
+  sweepStart?: number;
+  sweepEnd?: number;
+  sweepSpeed?: string;
+  sweepLoop?: boolean;
 }
 
 export interface AmbientLayerSettings {
