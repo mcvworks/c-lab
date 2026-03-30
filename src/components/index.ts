@@ -14,3 +14,4 @@ export type { QuickPreset } from './PresetBar';
 export { default as BinauralWaveformView } from './BinauralWaveformView';
 export { default as SympatheticStringsView } from './SympatheticStringsView';
 export { default as RoomVisualizer } from './RoomVisualizer';
+export { default as LissajousView } from './LissajousView';

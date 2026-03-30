@@ -18,6 +18,7 @@ import {
   PresetBar,
   SympatheticStringsView,
   RoomVisualizer,
+  LissajousView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
@@ -92,6 +93,26 @@ const EXPLORE_PRESETS: QuickPreset<ExploreQuickPreset>[] = [
   { label: 'Brown Noise',  settings: { sourceMode: 'noise', waveform: 'sine',     noiseType: 'brown', frequency: 440,  amplitude: 0.5  } },
 ];
 
+// ── Lissajous ratio presets ──────────────────────────────────────
+const LISSAJOUS_RATIOS = [
+  { label: '1:1', a: 1, b: 1 },
+  { label: '2:1', a: 2, b: 1 },
+  { label: '3:2', a: 3, b: 2 },
+  { label: '4:3', a: 4, b: 3 },
+  { label: '5:4', a: 5, b: 4 },
+  { label: '3:1', a: 3, b: 1 },
+] as const;
+
+/** Color tint based on frequency ratio complexity */
+function lissajousColor(a: number, b: number): string {
+  const ratio = a / b;
+  // Simple ratios → accent, complex → highlight
+  const simplicity = 1 / (Math.abs(ratio - Math.round(ratio)) + 0.1);
+  if (simplicity > 5) return colors.accent;
+  if (simplicity > 2) return '#60a5fa'; // blue
+  return colors.highlight;
+}
+
 export default function ExploreScreen() {
   const {
     sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, isPlaying,
@@ -105,6 +126,14 @@ export default function ExploreScreen() {
   const savePreset = usePresetStore((s) => s.savePreset);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [harmonicsExpanded, setHarmonicsExpanded] = useState(false);
+
+  // ── Lissajous state ──────────────────────────────────────────────
+  const [lissajousEnabled, setLissajousEnabled] = useState(false);
+  const [lissFreqA, setLissFreqA] = useState(300);
+  const [lissFreqB, setLissFreqB] = useState(200);
+  const [lissPhase, setLissPhase] = useState(Math.PI / 2);
+  const [lissTrail, setLissTrail] = useState(800);
+  const [lissSyncTone, setLissSyncTone] = useState(false);
 
   const handleSavePreset = useCallback(async (name: string) => {
     const settings: ExploreSettings = {
@@ -184,6 +213,21 @@ export default function ExploreScreen() {
 
   const { contentWidth, vizHeight, isTablet } = useResponsive();
   const cardContentWidth = contentWidth - spacing.md * 2;
+
+  // ── Lissajous: sync Freq A to tone generator ────────────────────
+  useEffect(() => {
+    if (lissSyncTone && sourceMode === 'tone') {
+      setLissFreqA(frequency);
+    }
+  }, [lissSyncTone, sourceMode, frequency]);
+
+  const lissColor = useMemo(() => lissajousColor(lissFreqA, lissFreqB), [lissFreqA, lissFreqB]);
+
+  const handleLissajousRatio = useCallback((a: number, b: number) => {
+    const baseFreq = lissSyncTone && sourceMode === 'tone' ? frequency : lissFreqA;
+    setLissFreqA(Math.round(baseFreq));
+    setLissFreqB(Math.round(baseFreq * b / a));
+  }, [lissSyncTone, sourceMode, frequency, lissFreqA]);
 
   // ── Sympathetic Strings ─────────────────────────────────────────
   const [stringsEnabled, setStringsEnabled] = useState(false);
@@ -325,6 +369,113 @@ export default function ExploreScreen() {
             </View>
           </Card>
         </View>
+
+        {/* Lissajous Figure */}
+        <SectionHeader title="LISSAJOUS" label />
+        <Card style={styles.card}>
+          <View style={styles.stringsHeaderRow}>
+            <Text style={styles.controlLabel}>Figure</Text>
+            <PrimaryButton
+              title={lissajousEnabled ? 'ON' : 'OFF'}
+              variant={lissajousEnabled ? 'filled' : 'ghost'}
+              onPress={() => setLissajousEnabled((v) => !v)}
+              style={styles.stringsToggle}
+            />
+          </View>
+
+          {lissajousEnabled && (
+            <>
+              <LissajousView
+                freqA={lissFreqA}
+                freqB={lissFreqB}
+                phase={lissPhase}
+                trailLength={lissTrail}
+                color={lissColor}
+                width={cardContentWidth}
+                height={cardContentWidth * 0.75}
+                isPlaying={lissajousEnabled}
+              />
+
+              {/* Ratio presets */}
+              <View style={styles.presetRow}>
+                {LISSAJOUS_RATIOS.map((r) => (
+                  <PrimaryButton
+                    key={r.label}
+                    title={r.label}
+                    variant={
+                      Math.abs(lissFreqA / lissFreqB - r.a / r.b) < 0.02
+                        ? 'filled'
+                        : 'ghost'
+                    }
+                    onPress={() => handleLissajousRatio(r.a, r.b)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+
+              {/* Sync to tone toggle */}
+              {sourceMode === 'tone' && (
+                <View style={styles.lissajousSyncRow}>
+                  <Text style={styles.controlLabel}>Sync A to Tone</Text>
+                  <PrimaryButton
+                    title={lissSyncTone ? 'ON' : 'OFF'}
+                    variant={lissSyncTone ? 'filled' : 'ghost'}
+                    onPress={() => setLissSyncTone((v) => !v)}
+                    style={styles.stringsToggle}
+                  />
+                </View>
+              )}
+
+              <PrimarySlider
+                label="Freq A (X)"
+                value={lissFreqA}
+                onValueChange={(v) => { if (!lissSyncTone) setLissFreqA(Math.round(v)); }}
+                min={20}
+                max={1000}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} Hz`}
+                style={styles.slider}
+              />
+
+              <PrimarySlider
+                label="Freq B (Y)"
+                value={lissFreqB}
+                onValueChange={(v) => setLissFreqB(Math.round(v))}
+                min={20}
+                max={1000}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} Hz`}
+                style={styles.slider}
+              />
+
+              <PrimarySlider
+                label="Phase"
+                value={lissPhase}
+                onValueChange={setLissPhase}
+                min={0}
+                max={Math.PI * 2}
+                step={0.01}
+                formatValue={(v) => `${Math.round((v / Math.PI) * 180)}°`}
+                style={styles.slider}
+              />
+
+              <PrimarySlider
+                label="Trail"
+                value={lissTrail}
+                onValueChange={(v) => setLissTrail(Math.round(v))}
+                min={100}
+                max={2000}
+                step={10}
+                formatValue={(v) => `${Math.round(v)}`}
+                style={styles.slider}
+              />
+
+              <Text style={styles.noiseHint}>
+                Lissajous figures trace two sine waves against each other. Simple frequency ratios create clean, stable patterns. Slowly detune one frequency to see the figure rotate and morph.
+              </Text>
+            </>
+          )}
+        </Card>
 
         {/* Source Mode Toggle */}
         <SectionHeader title="SOURCE" label />
@@ -800,6 +951,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     minWidth: 52,
+  },
+  lissajousSyncRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   bottomSpacer: {
     height: spacing.xxl,
