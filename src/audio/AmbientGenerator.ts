@@ -188,6 +188,14 @@ export class AmbientGenerator {
     }
   }
 
+  /** Gradually fade master gain to 0 over the given duration (seconds). */
+  fadeOut(durationSec: number): void {
+    if (Platform.OS === 'web' && this.masterGain && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      smoothRamp(this.masterGain.gain, 0, now, durationSec);
+    }
+  }
+
   /** Update a single layer's filter cutoff (brightness) smoothly. */
   setLayerFilterCutoff(id: number, cutoff: number): void {
     if (Platform.OS === 'web') {

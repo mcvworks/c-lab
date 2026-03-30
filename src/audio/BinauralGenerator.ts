@@ -95,6 +95,14 @@ export class BinauralGenerator {
     return this.playing;
   }
 
+  /** Gradually fade master gain to 0 over the given duration (seconds). */
+  fadeOut(durationSec: number): void {
+    if (Platform.OS === 'web' && this.masterGain && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      smoothRamp(this.masterGain.gain, 0, now, durationSec);
+    }
+  }
+
   async dispose(): Promise<void> {
     await this.stop();
     if (this.audioCtx) {

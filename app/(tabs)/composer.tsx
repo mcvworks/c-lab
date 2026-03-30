@@ -163,6 +163,12 @@ const COMPOSER_PRESETS: QuickPreset<ComposerQuickPreset>[] = [
   },
 ];
 
+function formatTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 let nextLayerId = 1;
 
 export default function ComposerScreen() {
@@ -206,6 +212,20 @@ export default function ComposerScreen() {
   const [duration, setDuration] = useState(15);
   const [fadeIn, setFadeIn] = useState(5);
   const [fadeOut, setFadeOut] = useState(5);
+
+  // Session timer
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fadeStartedRef = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setElapsedSeconds(0);
+    fadeStartedRef.current = false;
+  }, []);
 
   // Save modal
   const savePreset = usePresetStore((s) => s.savePreset);
@@ -490,12 +510,19 @@ export default function ComposerScreen() {
   );
 
   // Start / stop session
+  const stopSession = useCallback(async () => {
+    clearTimer();
+    const gen = getGenerator();
+    const ambient = getAmbient();
+    await Promise.all([gen.stop(), ambient.stop()]);
+    setIsPlaying(false);
+  }, [clearTimer, getGenerator, getAmbient]);
+
   const toggleSession = useCallback(async () => {
     const gen = getGenerator();
     const ambient = getAmbient();
     if (isPlaying) {
-      await Promise.all([gen.stop(), ambient.stop()]);
-      setIsPlaying(false);
+      await stopSession();
     } else {
       await Promise.all([
         gen.play({
@@ -509,8 +536,43 @@ export default function ComposerScreen() {
         ambient.start(layers as AmbientLayerConfig[]),
       ]);
       setIsPlaying(true);
+      setElapsedSeconds(0);
+      fadeStartedRef.current = false;
+
+      // Start countdown timer
+      const startTime = Date.now();
+      timerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setElapsedSeconds(elapsed);
+      }, 1000);
     }
-  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, getGenerator, getAmbient]);
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, getGenerator, getAmbient, stopSession]);
+
+  // Auto-stop and fade-out effect
+  useEffect(() => {
+    if (!isPlaying) return;
+    const totalSeconds = duration * 60;
+    const remaining = totalSeconds - elapsedSeconds;
+
+    // Begin fade-out when remaining time equals fadeOut duration
+    if (fadeOut > 0 && remaining <= fadeOut && remaining > 0 && !fadeStartedRef.current) {
+      fadeStartedRef.current = true;
+      generatorRef.current?.fadeOut(remaining);
+      ambientRef.current?.fadeOut(remaining);
+    }
+
+    // Auto-stop when time is up
+    if (remaining <= 0) {
+      stopSession();
+    }
+  }, [isPlaying, elapsedSeconds, duration, fadeOut, stopSession]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   return (
     <Screen>
@@ -773,6 +835,26 @@ export default function ComposerScreen() {
           {/* ── Playback Controls ──────────────────────────────────── */}
           <View style={isTablet ? styles.tabletHalf : undefined}>
             {isTablet && <SectionHeader title="PLAYBACK" label />}
+
+            {isPlaying && (
+              <Card style={styles.timerCard}>
+                <View style={styles.timerRow}>
+                  <View style={styles.timerCol}>
+                    <Text style={styles.timerLabel}>ELAPSED</Text>
+                    <Text style={styles.timerValue}>{formatTime(elapsedSeconds)}</Text>
+                  </View>
+                  <View style={styles.timerDivider} />
+                  <View style={styles.timerCol}>
+                    <Text style={styles.timerLabel}>REMAINING</Text>
+                    <Text style={styles.timerValue}>{formatTime(Math.max(0, duration * 60 - elapsedSeconds))}</Text>
+                  </View>
+                </View>
+                <View style={styles.timerBarBg}>
+                  <View style={[styles.timerBarFill, { width: `${Math.min(100, (elapsedSeconds / (duration * 60)) * 100)}%` }]} />
+                </View>
+              </Card>
+            )}
+
             <View style={styles.buttonRow}>
               <PrimaryButton
                 title={isPlaying ? 'Stop Session' : 'Start Session'}
@@ -966,6 +1048,49 @@ const styles = StyleSheet.create({
   },
   addLayerButton: {
     marginBottom: spacing.md,
+  },
+  // Timer styles
+  timerCard: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.background,
+  },
+  timerRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  timerCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  timerDivider: {
+    width: 1,
+    backgroundColor: colors.surfaceElevated,
+    marginHorizontal: spacing.sm,
+  },
+  timerLabel: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.textMuted,
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  timerValue: {
+    fontSize: typography.xl,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  timerBarBg: {
+    width: '100%',
+    height: 4,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  timerBarFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
   },
   // Playback & utility
   buttonRow: {
