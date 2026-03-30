@@ -26,6 +26,8 @@ export interface AmbientLayerSettings {
   type: 'rain' | 'ocean' | 'wind' | 'forest' | 'fire';
   volume: number;
   enabled: boolean;
+  pan?: number;           // -1 (L) to +1 (R), default 0
+  filterCutoff?: number;  // Hz, user-controllable brightness
 }
 
 export type CarrierWaveform = 'sine' | 'triangle' | 'square';

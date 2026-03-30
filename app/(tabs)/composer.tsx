@@ -79,7 +79,18 @@ interface AmbientLayer {
   type: AmbientType;
   volume: number;
   enabled: boolean;
+  pan: number;           // -1..+1
+  filterCutoff: number;  // Hz
 }
+
+/** Default filter cutoff per ambient type (brightness). */
+const DEFAULT_CUTOFF: Record<AmbientType, number> = {
+  rain: 3000,
+  ocean: 500,
+  wind: 800,
+  forest: 6000,
+  fire: 600,
+};
 
 // ── Quick presets (mood-based) ─────────────────────────────────────────
 interface ComposerQuickPreset {
@@ -188,7 +199,7 @@ export default function ComposerScreen() {
 
   // Ambient layers
   const [layers, setLayers] = useState<AmbientLayer[]>([
-    { id: nextLayerId++, type: 'rain', volume: 0.4, enabled: true },
+    { id: nextLayerId++, type: 'rain', volume: 0.4, enabled: true, pan: 0, filterCutoff: DEFAULT_CUTOFF.rain },
   ]);
 
   // Session settings
@@ -213,7 +224,7 @@ export default function ComposerScreen() {
       carrierWaveform,
       stereoWidth,
       entrainmentMode,
-      layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
+      layers: layers.map(({ type, volume, enabled, pan, filterCutoff }) => ({ type, volume, enabled, pan, filterCutoff })),
       duration,
       fadeIn,
       fadeOut,
@@ -268,7 +279,7 @@ export default function ComposerScreen() {
       carrierWaveform,
       stereoWidth,
       entrainmentMode,
-      layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
+      layers: layers.map(({ type, volume, enabled, pan, filterCutoff }) => ({ type, volume, enabled, pan, filterCutoff })),
       duration,
       fadeIn,
       fadeOut,
@@ -290,7 +301,7 @@ export default function ComposerScreen() {
       setCarrierWaveform(s.carrierWaveform ?? 'sine');
       setStereoWidth(s.stereoWidth ?? 1);
       setEntrainmentMode(s.entrainmentMode ?? 'binaural');
-      setLayers(s.layers.map((l, i) => ({ ...l, id: nextLayerId++ })));
+      setLayers(s.layers.map((l) => ({ ...l, id: nextLayerId++, pan: l.pan ?? 0, filterCutoff: l.filterCutoff ?? DEFAULT_CUTOFF[l.type] })));
       setDuration(s.duration);
       setFadeIn(s.fadeIn);
       setFadeOut(s.fadeOut);
@@ -315,7 +326,7 @@ export default function ComposerScreen() {
     const usedTypes = new Set(layers.map((l) => l.type));
     const available = AMBIENT_TYPES.find((t) => !usedTypes.has(t)) ?? 'rain';
     setLayers((prev) => {
-      const updated = [...prev, { id: nextLayerId++, type: available, volume: 0.4, enabled: true }];
+      const updated = [...prev, { id: nextLayerId++, type: available, volume: 0.4, enabled: true, pan: 0, filterCutoff: DEFAULT_CUTOFF[available] }];
       if (ambientRef.current?.isPlaying()) {
         ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
       }
@@ -342,13 +353,27 @@ export default function ComposerScreen() {
 
   const updateLayerType = useCallback((id: number, type: AmbientType) => {
     setLayers((prev) => {
-      const updated = prev.map((l) => (l.id === id ? { ...l, type } : l));
+      const updated = prev.map((l) => (l.id === id ? { ...l, type, filterCutoff: DEFAULT_CUTOFF[type] } : l));
       // Type change requires full layer re-sync (different filter chain)
       if (ambientRef.current?.isPlaying()) {
         ambientRef.current.syncLayers(updated as AmbientLayerConfig[]);
       }
       return updated;
     });
+  }, []);
+
+  const updateLayerPan = useCallback((id: number, pan: number) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, pan } : l)));
+    if (ambientRef.current?.isPlaying()) {
+      ambientRef.current.setLayerPan(id, pan);
+    }
+  }, []);
+
+  const updateLayerFilterCutoff = useCallback((id: number, filterCutoff: number) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, filterCutoff } : l)));
+    if (ambientRef.current?.isPlaying()) {
+      ambientRef.current.setLayerFilterCutoff(id, filterCutoff);
+    }
   }, []);
 
   const toggleLayer = useCallback((id: number) => {
@@ -391,7 +416,7 @@ export default function ComposerScreen() {
     setCarrierWaveform(p.carrierWaveform ?? 'sine');
     setStereoWidth(p.stereoWidth ?? 1);
     setEntrainmentMode(p.entrainmentMode ?? 'binaural');
-    setLayers(p.layers.map((l) => ({ ...l, id: nextLayerId++ })));
+    setLayers(p.layers.map((l) => ({ ...l, id: nextLayerId++, pan: 0, filterCutoff: DEFAULT_CUTOFF[l.type] })));
     setDuration(p.duration);
     setFadeIn(p.fadeIn);
     setFadeOut(p.fadeOut);
@@ -656,6 +681,26 @@ export default function ComposerScreen() {
               max={1}
               step={0.01}
               formatValue={(v) => `${Math.round(v * 100)}%`}
+              style={styles.layerSlider}
+            />
+            <PrimarySlider
+              label="Pan"
+              value={layer.pan}
+              onValueChange={(v) => updateLayerPan(layer.id, v)}
+              min={-1}
+              max={1}
+              step={0.01}
+              formatValue={(v) => v < -0.01 ? `L ${Math.round(Math.abs(v) * 100)}%` : v > 0.01 ? `R ${Math.round(v * 100)}%` : 'Center'}
+              style={styles.layerSlider}
+            />
+            <PrimarySlider
+              label="Brightness"
+              value={layer.filterCutoff}
+              onValueChange={(v) => updateLayerFilterCutoff(layer.id, v)}
+              min={200}
+              max={8000}
+              step={10}
+              formatValue={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k Hz` : `${Math.round(v)} Hz`}
               style={styles.layerSlider}
             />
           </Card>

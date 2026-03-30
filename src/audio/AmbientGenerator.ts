@@ -7,6 +7,8 @@ export interface AmbientLayerConfig {
   type: AmbientType;
   volume: number;
   enabled: boolean;
+  pan?: number;           // -1 (L) to +1 (R), default 0
+  filterCutoff?: number;  // Hz, user-controllable brightness
 }
 
 interface WebLayerNodes {
@@ -15,6 +17,7 @@ interface WebLayerNodes {
   filter: BiquadFilterNode;
   filter2?: BiquadFilterNode;
   gain: GainNode;
+  panner: StereoPannerNode;
   lfo?: OscillatorNode;
   lfoGain?: GainNode;
 }
@@ -72,8 +75,24 @@ const AMBIENT_RECIPES: Record<AmbientType, {
   },
 };
 
+/** Default filter cutoff per ambient type (used when no user override). */
+const DEFAULT_CUTOFF: Record<AmbientType, number> = {
+  rain: 3000,
+  ocean: 500,
+  wind: 800,
+  forest: 6000,
+  fire: 600,
+};
+
 const NOISE_BUFFER_DURATION = 4; // seconds
 const RAMP_TIME = 0.05; // 50ms for smooth transitions
+
+/** Cancel any scheduled automation, anchor at the current value, then ramp. */
+function smoothRamp(param: AudioParam, target: number, now: number, duration = RAMP_TIME): void {
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(param.value, now);
+  param.linearRampToValueAtTime(target, now + duration);
+}
 
 /**
  * Manages multiple ambient noise layers with distinct sonic textures.
@@ -140,7 +159,7 @@ export class AmbientGenerator {
       const layer = this.webLayers.get(id);
       if (!layer || !this.audioCtx) return;
       const now = this.audioCtx.currentTime;
-      layer.gain.gain.linearRampToValueAtTime(volume, now + RAMP_TIME);
+      smoothRamp(layer.gain.gain, volume, now);
     }
     // Native volume updates happen via syncLayers
   }
@@ -154,7 +173,27 @@ export class AmbientGenerator {
       // Mute/unmute by ramping gain; the layer's volume is stored in the config
       // so we ramp to 0 for disabled. The next syncLayers or setLayerVolume
       // call will restore the correct volume when re-enabled.
-      layer.gain.gain.linearRampToValueAtTime(enabled ? layer.gain.gain.value || 0.4 : 0, now + RAMP_TIME);
+      const recipe = AMBIENT_RECIPES[layer.type];
+      const targetVol = enabled ? (recipe.baseGain * 0.5) : 0; // conservative restore; syncLayers will set exact volume
+      smoothRamp(layer.gain.gain, targetVol, now);
+    }
+  }
+
+  /** Update a single layer's stereo pan smoothly. */
+  setLayerPan(id: number, pan: number): void {
+    if (Platform.OS === 'web') {
+      const layer = this.webLayers.get(id);
+      if (!layer || !this.audioCtx) return;
+      smoothRamp(layer.panner.pan, pan, this.audioCtx.currentTime);
+    }
+  }
+
+  /** Update a single layer's filter cutoff (brightness) smoothly. */
+  setLayerFilterCutoff(id: number, cutoff: number): void {
+    if (Platform.OS === 'web') {
+      const layer = this.webLayers.get(id);
+      if (!layer || !this.audioCtx) return;
+      smoothRamp(layer.filter.frequency, cutoff, this.audioCtx.currentTime);
     }
   }
 
@@ -218,17 +257,21 @@ export class AmbientGenerator {
     source.buffer = noiseBuffer;
     source.loop = true;
 
-    // Primary filter
+    // Primary filter — use user filterCutoff if provided
     const filter = ctx.createBiquadFilter();
     filter.type = recipe.filterType;
-    filter.frequency.setValueAtTime(recipe.filterFreq, now);
+    filter.frequency.setValueAtTime(config.filterCutoff ?? recipe.filterFreq, now);
     filter.Q.setValueAtTime(recipe.filterQ, now);
 
     // Layer gain
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(config.volume * recipe.baseGain, now);
 
-    // Chain: source → filter → [filter2] → gain → master
+    // Stereo panner
+    const panner = ctx.createStereoPanner();
+    panner.pan.setValueAtTime(config.pan ?? 0, now);
+
+    // Chain: source → filter → [filter2] → gain → panner → master
     source.connect(filter);
 
     let lastNode: AudioNode = filter;
@@ -248,8 +291,6 @@ export class AmbientGenerator {
     let lfo: OscillatorNode | undefined;
     let lfoGain: GainNode | undefined;
     if (recipe.lfoRate && recipe.lfoDepth) {
-      // LFO modulates the layer gain: gain oscillates between
-      // volume*(1-depth) and volume*(1+depth)
       lfo = ctx.createOscillator();
       lfo.type = 'sine';
       lfo.frequency.setValueAtTime(recipe.lfoRate, now);
@@ -263,10 +304,11 @@ export class AmbientGenerator {
     }
 
     lastNode.connect(gain);
-    gain.connect(this.masterGain!);
+    gain.connect(panner);
+    panner.connect(this.masterGain!);
     source.start(now);
 
-    this.webLayers.set(config.id, { type: config.type, source, filter, filter2, gain, lfo, lfoGain });
+    this.webLayers.set(config.id, { type: config.type, source, filter, filter2, gain, panner, lfo, lfoGain });
   }
 
   private removeWebLayer(id: number): void {
@@ -276,9 +318,29 @@ export class AmbientGenerator {
     try { layer.filter.disconnect(); } catch { /* */ }
     if (layer.filter2) try { layer.filter2.disconnect(); } catch { /* */ }
     try { layer.gain.disconnect(); } catch { /* */ }
+    try { layer.panner.disconnect(); } catch { /* */ }
     if (layer.lfo) try { layer.lfo.stop(); layer.lfo.disconnect(); } catch { /* */ }
     if (layer.lfoGain) try { layer.lfoGain.disconnect(); } catch { /* */ }
     this.webLayers.delete(id);
+  }
+
+  /** Fade out a web layer over RAMP_TIME then disconnect. */
+  private fadeOutWebLayer(id: number, now: number): void {
+    const layer = this.webLayers.get(id);
+    if (!layer) return;
+    this.webLayers.delete(id);
+    layer.gain.gain.cancelScheduledValues(now);
+    layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
+    layer.gain.gain.linearRampToValueAtTime(0, now + RAMP_TIME);
+    setTimeout(() => {
+      try { layer.source.stop(); layer.source.disconnect(); } catch { /* */ }
+      try { layer.filter.disconnect(); } catch { /* */ }
+      if (layer.filter2) try { layer.filter2.disconnect(); } catch { /* */ }
+      try { layer.gain.disconnect(); } catch { /* */ }
+      try { layer.panner.disconnect(); } catch { /* */ }
+      if (layer.lfo) try { layer.lfo.stop(); layer.lfo.disconnect(); } catch { /* */ }
+      if (layer.lfoGain) try { layer.lfoGain.disconnect(); } catch { /* */ }
+    }, RAMP_TIME * 1000 + 20);
   }
 
   private syncWebLayers(configs: AmbientLayerConfig[]): void {
@@ -289,10 +351,10 @@ export class AmbientGenerator {
     const activeIds = new Set(configs.filter((c) => c.enabled).map((c) => c.id));
     const configMap = new Map(configs.map((c) => [c.id, c]));
 
-    // Remove layers that are no longer present or disabled
+    // Remove layers that are no longer present or disabled — fade out first
     for (const id of this.webLayers.keys()) {
       if (!activeIds.has(id)) {
-        this.removeWebLayer(id);
+        this.fadeOutWebLayer(id, now);
       }
     }
 
@@ -302,21 +364,21 @@ export class AmbientGenerator {
 
       const existing = this.webLayers.get(config.id);
       if (existing) {
-        // Type changed — tear down and recreate with new filter chain
+        // Type changed — fade out old, create new
         if (existing.type !== config.type) {
-          this.removeWebLayer(config.id);
+          this.fadeOutWebLayer(config.id, now);
           this.createWebLayer(config);
           continue;
         }
         const recipe = AMBIENT_RECIPES[config.type];
-        existing.gain.gain.linearRampToValueAtTime(
-          config.volume * recipe.baseGain,
-          now + RAMP_TIME,
-        );
+        smoothRamp(existing.gain.gain, config.volume * recipe.baseGain, now);
+        smoothRamp(existing.panner.pan, config.pan ?? 0, now);
+        smoothRamp(existing.filter.frequency, config.filterCutoff ?? recipe.filterFreq, now);
         if (existing.lfoGain && recipe.lfoDepth) {
-          existing.lfoGain.gain.linearRampToValueAtTime(
+          smoothRamp(
+            existing.lfoGain.gain,
             recipe.lfoDepth * config.volume * recipe.baseGain,
-            now + RAMP_TIME,
+            now,
           );
         }
       } else {
@@ -328,7 +390,7 @@ export class AmbientGenerator {
   private async stopWeb(): Promise<void> {
     if (this.masterGain && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.06);
+      smoothRamp(this.masterGain.gain, 0, now, 0.06);
       await new Promise((r) => setTimeout(r, 80));
     }
 

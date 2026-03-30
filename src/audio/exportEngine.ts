@@ -124,6 +124,7 @@ function computeFilter(type: 'lowpass' | 'highpass' | 'bandpass', freq: number, 
 interface LayerRenderState {
   recipe: AmbientRecipe;
   volume: number;
+  pan: number;           // -1..+1
   filter1Coeffs: BiquadCoeffs;
   filter1State: BiquadState;
   filter2Coeffs?: BiquadCoeffs;
@@ -133,10 +134,13 @@ interface LayerRenderState {
 
 function initLayerState(layer: AmbientLayerSettings): LayerRenderState {
   const recipe = AMBIENT_RECIPES[layer.type];
+  // Use user filterCutoff if provided, else recipe default
+  const cutoff = layer.filterCutoff ?? recipe.filterFreq;
   const state: LayerRenderState = {
     recipe,
     volume: layer.volume,
-    filter1Coeffs: computeFilter(recipe.filterType, recipe.filterFreq, recipe.filterQ),
+    pan: layer.pan ?? 0,
+    filter1Coeffs: computeFilter(recipe.filterType, cutoff, recipe.filterQ),
     filter1State: makeBiquadState(),
     lfoPhase: 0,
   };
@@ -309,13 +313,19 @@ export async function renderSession(
         const fadeGain = computeFadeGain(globalIdx, totalSamples, settings.fadeIn, settings.fadeOut);
         const sample = outputBuf[i] * gain * fadeGain;
 
-        // Read existing stereo samples and add ambient (mono → both channels)
+        // Apply equal-power stereo panning: pan in [-1, +1]
+        // Map pan to [0, π/2] for cos/sin
+        const panAngle = (ls.pan + 1) * 0.25 * Math.PI;
+        const panL = Math.cos(panAngle);
+        const panR = Math.sin(panAngle);
+
+        // Read existing stereo samples and add panned ambient
         const byteOffset = headerSize + globalIdx * blockAlign;
         const existingL = wavView.getInt16(byteOffset, true);
         const existingR = wavView.getInt16(byteOffset + bytesPerSample, true);
 
-        wavView.setInt16(byteOffset, clampInt16Raw(existingL + sample * 0x7fff), true);
-        wavView.setInt16(byteOffset + bytesPerSample, clampInt16Raw(existingR + sample * 0x7fff), true);
+        wavView.setInt16(byteOffset, clampInt16Raw(existingL + sample * panL * 0x7fff), true);
+        wavView.setInt16(byteOffset + bytesPerSample, clampInt16Raw(existingR + sample * panR * 0x7fff), true);
       }
     }
 
