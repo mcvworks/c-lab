@@ -12,3 +12,4 @@ export { default as SavePresetModal } from './SavePresetModal';
 export { default as PresetBar } from './PresetBar';
 export type { QuickPreset } from './PresetBar';
 export { default as BinauralWaveformView } from './BinauralWaveformView';
+export { default as SympatheticStringsView } from './SympatheticStringsView';

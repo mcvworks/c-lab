@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
 import { usePresetStore } from '@/src/state/usePresetStore';
@@ -16,10 +16,12 @@ import {
   SpectrumView,
   SavePresetModal,
   PresetBar,
+  SympatheticStringsView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale } from '@/src/audio';
+import { SympatheticStringsEngine } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -173,6 +175,69 @@ export default function ExploreScreen() {
 
   const { contentWidth, vizHeight, isTablet } = useResponsive();
   const cardContentWidth = contentWidth - spacing.md * 2;
+
+  // ── Sympathetic Strings ─────────────────────────────────────────
+  const [stringsEnabled, setStringsEnabled] = useState(false);
+  const [stringsVolume, setStringsVolume] = useState(0.15);
+  const [stringsResonance, setStringsResonance] = useState<number[]>([]);
+  const stringsEngineRef = useRef<SympatheticStringsEngine | null>(null);
+
+  const getStringsEngine = useCallback(() => {
+    if (!stringsEngineRef.current) {
+      stringsEngineRef.current = new SympatheticStringsEngine();
+    }
+    return stringsEngineRef.current;
+  }, []);
+
+  const stringNotes = useMemo(() => {
+    const engine = getStringsEngine();
+    return engine.getStrings();
+  }, [getStringsEngine]);
+
+  // Start/stop strings engine with playback
+  useEffect(() => {
+    const engine = getStringsEngine();
+    if (isPlaying && stringsEnabled && sourceMode === 'tone') {
+      engine.start();
+      engine.setVolume(stringsVolume);
+      engine.updateFrequency(frequency);
+      setStringsResonance(engine.getResonanceState());
+    } else {
+      engine.silence();
+      // Small delay before stopping to let the silence ramp complete
+      const t = setTimeout(() => {
+        if (!isPlaying || !stringsEnabled || sourceMode !== 'tone') {
+          engine.stop();
+          setStringsResonance(stringNotes.map(() => 0));
+        }
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [isPlaying, stringsEnabled, sourceMode, getStringsEngine, stringNotes]);
+
+  // Update resonance when frequency changes during playback
+  useEffect(() => {
+    const engine = getStringsEngine();
+    if (isPlaying && stringsEnabled && sourceMode === 'tone' && engine.isActive()) {
+      engine.updateFrequency(frequency);
+      setStringsResonance(engine.getResonanceState());
+    }
+  }, [frequency, isPlaying, stringsEnabled, sourceMode, getStringsEngine]);
+
+  // Update volume live
+  useEffect(() => {
+    const engine = getStringsEngine();
+    if (engine.isActive()) {
+      engine.setVolume(stringsVolume);
+    }
+  }, [stringsVolume, getStringsEngine]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stringsEngineRef.current?.dispose();
+    };
+  }, []);
 
   const handlePlay = useCallback(async () => {
     try {
@@ -468,6 +533,47 @@ export default function ExploreScreen() {
           </Text>
         </Card>
 
+        {/* Sympathetic Strings — tone mode only */}
+        {sourceMode === 'tone' && (
+          <>
+            <SectionHeader title="SYMPATHETIC STRINGS" label />
+            <Card style={styles.card}>
+              <View style={styles.stringsHeaderRow}>
+                <Text style={styles.controlLabel}>Resonance</Text>
+                <PrimaryButton
+                  title={stringsEnabled ? 'ON' : 'OFF'}
+                  variant={stringsEnabled ? 'filled' : 'ghost'}
+                  onPress={() => setStringsEnabled((v) => !v)}
+                  style={styles.stringsToggle}
+                />
+              </View>
+
+              {stringsEnabled && (
+                <>
+                  <SympatheticStringsView
+                    strings={stringNotes}
+                    resonance={stringsResonance}
+                    isPlaying={isPlaying}
+                  />
+                  <PrimarySlider
+                    label="Sympathetic Volume"
+                    value={stringsVolume}
+                    onValueChange={setStringsVolume}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    style={styles.slider}
+                  />
+                  <Text style={styles.noiseHint}>
+                    Virtual strings resonate when your tone matches their tuning. Harmonics of the played frequency also excite nearby strings.
+                  </Text>
+                </>
+              )}
+            </Card>
+          </>
+        )}
+
         {/* Playback Controls */}
         <View style={styles.buttonRow}>
           <PrimaryButton
@@ -624,6 +730,17 @@ const styles = StyleSheet.create({
   },
   tabletHalf: {
     flex: 1,
+  },
+  stringsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  stringsToggle: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    minWidth: 52,
   },
   bottomSpacer: {
     height: spacing.xxl,

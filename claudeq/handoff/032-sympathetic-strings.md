@@ -1,0 +1,24 @@
+# Handoff
+- Task: 032 — Sympathetic strings resonance mode
+- Status: done
+- Summary: Added a "Sympathetic Strings" feature to the Explore tab. A bank of 12 virtual strings (C3–C5) resonate visually and audibly when the played tone's frequency (or its harmonics) matches their tuning. Strings vibrate and glow with intensity proportional to resonance. The feature includes an ON/OFF toggle and a volume slider, and is only active in tone mode.
+- Files Changed:
+  - `src/audio/SympatheticStringsEngine.ts` — New audio engine: creates 12 sine oscillators tuned to musical notes, with gains driven by resonance proximity (Gaussian falloff, checks first 6 harmonics of the played tone).
+  - `src/components/SympatheticStringsView.tsx` — New visualization: renders 12 horizontal strings as SVG lines with animated vibration (dot displacement) and glow intensity based on resonance.
+  - `src/audio/index.ts` — Added SympatheticStringsEngine export.
+  - `src/components/index.ts` — Added SympatheticStringsView export.
+  - `app/(tabs)/explore.tsx` — Integrated strings engine and view: toggle on/off, volume slider, resonance updates on frequency change, start/stop with playback, cleanup on unmount.
+- Commands Run: `npx tsc --noEmit` (clean)
+- Testing:
+  - Run `npx expo start --web`, open Explore tab
+  - **Toggle**: Scroll to "SYMPATHETIC STRINGS" section, tap ON — the string bank appears
+  - **Resonance**: Play a tone at 440 Hz — the A4 string should glow and vibrate strongly. Nearby strings may lightly resonate
+  - **Frequency sweep**: Drag the frequency slider — watch different strings light up as the tone passes through their tuning
+  - **Harmonics**: Play at 130.81 Hz (C3) — the C3 string resonates directly; C4 and C5 strings also resonate via harmonic relationships
+  - **Audio**: With headphones, the sympathetic tones are subtle sine waves layered on top of the main tone
+  - **Volume**: Adjust "Sympathetic Volume" slider — the sympathetic tone layer gets louder/softer
+  - **Noise mode**: Switch to noise — the strings section disappears (tone mode only)
+  - **Stop**: Stop playback — strings go silent and still
+- Blockers: None
+- Next Recommended Task: 033 (room simulator)
+- Notes: The resonance algorithm uses Gaussian falloff in semitone distance, checking the first 6 harmonics of the played frequency. This means a low C3 tone will also excite C4, G4, C5 strings via overtone relationships, teaching resonance intuitively. The engine is web-only (uses Web Audio API oscillators). Native support would require buffer-based generation similar to ToneGenerator's native path.

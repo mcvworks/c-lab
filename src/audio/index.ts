@@ -14,3 +14,5 @@ export type { ToneParams, EnvelopeParams, AudioParams, WaveformType, NoiseType, 
 export { SAMPLE_RATE, DEFAULT_TONE, DEFAULT_ENVELOPE } from './types';
 export { StereoTestEngine } from './StereoTestEngine';
 export type { StereoTestMode } from './StereoTestEngine';
+export { SympatheticStringsEngine } from './SympatheticStringsEngine';
+export type { StringState } from './SympatheticStringsEngine';
