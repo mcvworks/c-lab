@@ -1,0 +1,21 @@
+# Handoff
+- Task: 031 — Composer: dual-frequency waveform visualization
+- Status: done
+- Summary: Added a BinauralWaveformView component that renders both left and right ear frequencies as overlaid sine waves on an SVG canvas, with a subtle beat envelope fill showing the interference pattern. The view animates during playback and shows a static preview when stopped. Includes an L/R legend with frequency labels and beat rate.
+- Files Changed:
+  - `src/components/BinauralWaveformView.tsx` — New component: dual sine wave SVG renderer with beat envelope, animation loop, and L/R legend.
+  - `src/components/index.ts` — Added BinauralWaveformView export.
+  - `app/(tabs)/composer.tsx` — Imported BinauralWaveformView and placed it below the ear readout in binaural mode.
+- Commands Run: `npx tsc --noEmit` (clean)
+- Testing:
+  - Run `npx expo start --web`, open Composer tab
+  - **Dual waveform**: Below the LEFT EAR / RIGHT EAR readout, a waveform card shows two overlaid sine waves — cyan for left, violet for right
+  - **Beat pattern**: The waves drift in and out of phase, creating visible constructive/destructive interference. A subtle envelope fill highlights the beat pattern
+  - **Animation**: Start a session — waves animate smoothly. Stop — waves freeze in place
+  - **Legend**: Below the waveform, L/R labels show frequency and the beat rate
+  - **Parameter changes**: Adjust base frequency or beat difference — the waveform updates in real time
+  - **Isochronal mode**: Switch to isochronal — the waveform card hides (only shown in binaural mode)
+  - **Responsive**: Test on narrow phone and tablet widths — the visualization scales to fill available width
+- Blockers: None
+- Next Recommended Task: 032 (sympathetic strings)
+- Notes: The time window is calculated to show ~2.5 beat cycles regardless of beat frequency, so the interference pattern is always clearly visible. The envelope uses a filled region between upper and lower amplitude bounds. Animation uses requestAnimationFrame with real-time phase advancement for smooth, accurate wave motion.

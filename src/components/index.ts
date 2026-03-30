@@ -9,3 +9,6 @@ export { default as WaveformView } from './WaveformView';
 export { default as SpectrumView } from './SpectrumView';
 export { default as SandPlateView } from './SandPlateView';
 export { default as SavePresetModal } from './SavePresetModal';
+export { default as PresetBar } from './PresetBar';
+export type { QuickPreset } from './PresetBar';
+export { default as BinauralWaveformView } from './BinauralWaveformView';

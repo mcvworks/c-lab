@@ -16,6 +16,7 @@ import {
   SegmentedControl,
   SavePresetModal,
   PresetBar,
+  BinauralWaveformView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
@@ -623,6 +624,15 @@ export default function ComposerScreen() {
                 <Text style={styles.earFreq}>{beatDifference.toFixed(1)} Hz</Text>
               </View>
             </View>
+          )}
+
+          {isBinaural && (
+            <BinauralWaveformView
+              leftFreq={leftFreq}
+              rightFreq={rightFreq}
+              amplitude={binauralVolume}
+              isPlaying={isPlaying}
+            />
           )}
 
           <PrimarySlider
