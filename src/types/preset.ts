@@ -29,6 +29,7 @@ export interface AmbientLayerSettings {
 }
 
 export type CarrierWaveform = 'sine' | 'triangle' | 'square';
+export type EntrainmentMode = 'binaural' | 'isochronal';
 
 export interface ComposerSettings {
   baseFrequency: number;
@@ -36,6 +37,7 @@ export interface ComposerSettings {
   binauralVolume: number;
   carrierWaveform?: CarrierWaveform;
   stereoWidth?: number;
+  entrainmentMode?: EntrainmentMode;
   layers: AmbientLayerSettings[];
   duration: number;
   fadeIn: number;

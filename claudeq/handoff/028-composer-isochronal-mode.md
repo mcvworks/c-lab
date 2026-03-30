@@ -1,0 +1,24 @@
+# Handoff
+- Task: 028 — Composer: isochronal tone mode
+- Status: done
+- Summary: Added Binaural/Isochronal mode toggle to the Composer. Isochronal mode plays a single mono tone pulsed on/off at the beat frequency using a sine LFO for smooth amplitude modulation — works without headphones. UI adapts to hide stereo-specific controls (stereo width, L/R ear readout) and shows carrier/pulse rate readout instead.
+- Files Changed:
+  - `src/types/preset.ts` — Added `EntrainmentMode` type and optional `entrainmentMode` field to `ComposerSettings`
+  - `src/audio/BinauralGenerator.ts` — Added `EntrainmentMode` type and `entrainmentMode` to `BinauralParams`. New isochronal playback graph: single oscillator → pulseGain (modulated by sine LFO at beat freq via ConstantSourceNode offset). Mode switch triggers full graph rebuild. Teardown handles all new nodes.
+  - `src/audio/index.ts` — Exported `EntrainmentMode` type
+  - `src/audio/exportEngine.ts` — Isochronal offline render: single carrier × sine pulse envelope at beat frequency, output to both stereo channels equally.
+  - `app/(tabs)/composer.tsx` — Added entrainment mode SegmentedControl at top of beat section. UI conditionally shows L/R ear readout (binaural) or carrier/pulse readout (isochronal). Stereo width hidden in isochronal mode. Safety notice adapts. Mode saved/loaded with presets and exports. Quick presets support optional `entrainmentMode`.
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Composer tab
+  - **Mode toggle**: Switch between Binaural and Isochronal — UI should update (L/R readout vs carrier/pulse, stereo width hidden in isochronal)
+  - **Isochronal playback**: Select Isochronal, press Start Session — hear a rhythmic pulsing tone. Adjust beat difference — pulse rate changes. Adjust base frequency — carrier pitch changes.
+  - **Smooth pulses**: The pulsing should be smooth (sine envelope), not harsh square on/off
+  - **No headphones needed**: Isochronal works in mono — the pulse is audible from speakers
+  - **Binaural mode**: Switch back to Binaural — stereo width reappears, L/R readout returns, full binaural separation
+  - **Save/Load**: Save a preset in isochronal mode, reload from Library — mode persists
+  - **Export**: Export WAV in isochronal mode — file should contain pulsed mono tone
+  - **Safety notice**: Should read "speakers or headphones" in isochronal mode
+- Blockers: None
+- Next Recommended Task: 029 (composer layer pan/filter)
+- Notes: The isochronal LFO uses a sine wave (not square) for smooth pulse shaping — this avoids harsh clicks and sounds more natural. The sine maps from [-1,1] to [0,1] via `0.5 + 0.5*sin(...)`, creating a smooth amplitude envelope. Mode switching while playing triggers a full graph rebuild (teardown + rebuild), which is safe because masterGain fade-out handles the transition.

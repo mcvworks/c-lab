@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { SAMPLE_RATE } from './types';
-import type { ComposerSettings, AmbientLayerSettings, CarrierWaveform } from '@/src/types/preset';
+import type { ComposerSettings, AmbientLayerSettings, CarrierWaveform, EntrainmentMode } from '@/src/types/preset';
 
 /**
  * Offline audio renderer for exporting composer sessions to WAV files.
@@ -226,10 +226,11 @@ export async function renderSession(
     const chunkStart = chunk * CHUNK_SAMPLES;
     const chunkLen = Math.min(CHUNK_SAMPLES, totalSamples - chunkStart);
 
-    // -- Binaural beat (stereo) --
+    // -- Entrainment tone (binaural stereo or isochronal mono pulse) --
     const leftFreq = settings.baseFrequency;
     const rightFreq = settings.baseFrequency + settings.beatDifference;
     const waveform: CarrierWaveform = settings.carrierWaveform ?? 'sine';
+    const mode: EntrainmentMode = settings.entrainmentMode ?? 'binaural';
     const width = settings.stereoWidth ?? 1;
     const crossGain = 1 - width;
 
@@ -237,11 +238,24 @@ export async function renderSession(
       const t = (chunkStart + i) / SAMPLE_RATE;
       const fadeGain = computeFadeGain(chunkStart + i, totalSamples, settings.fadeIn, settings.fadeOut);
 
-      const leftRaw = carrierSample(2 * Math.PI * leftFreq * t, waveform);
-      const rightRaw = carrierSample(2 * Math.PI * rightFreq * t, waveform);
-      // Apply stereo width: at width=1, full separation; at width=0, mono mix
-      let leftSample = (leftRaw + rightRaw * crossGain) * settings.binauralVolume;
-      let rightSample = (rightRaw + leftRaw * crossGain) * settings.binauralVolume;
+      let leftSample: number;
+      let rightSample: number;
+
+      if (mode === 'isochronal') {
+        // Single carrier tone modulated by sine pulse at beat frequency
+        const carrier = carrierSample(2 * Math.PI * leftFreq * t, waveform);
+        const beatFreq = Math.abs(rightFreq - leftFreq);
+        // Sine LFO mapped from [-1,1] to [0,1] for smooth pulse envelope
+        const pulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * beatFreq * t);
+        const sample = carrier * pulse * settings.binauralVolume;
+        leftSample = sample;
+        rightSample = sample;
+      } else {
+        const leftRaw = carrierSample(2 * Math.PI * leftFreq * t, waveform);
+        const rightRaw = carrierSample(2 * Math.PI * rightFreq * t, waveform);
+        leftSample = (leftRaw + rightRaw * crossGain) * settings.binauralVolume;
+        rightSample = (rightRaw + leftRaw * crossGain) * settings.binauralVolume;
+      }
 
       // -- Mix ambient layers (mono, added to both channels) --
       // Noise is generated per-sample for continuity

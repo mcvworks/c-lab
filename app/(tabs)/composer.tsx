@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BinauralGenerator, AmbientGenerator, renderSession } from '@/src/audio';
-import type { AmbientLayerConfig, ExportProgress, CarrierWaveform } from '@/src/audio';
+import type { AmbientLayerConfig, ExportProgress, CarrierWaveform, EntrainmentMode } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -19,6 +19,13 @@ import {
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
+
+// ── Entrainment mode options ──────────────────────────────────────
+const ENTRAINMENT_MODES: EntrainmentMode[] = ['binaural', 'isochronal'];
+const ENTRAINMENT_LABELS: Record<EntrainmentMode, string> = {
+  binaural: 'Binaural',
+  isochronal: 'Isochronal',
+};
 
 // ── Carrier waveform options ──────────────────────────────────────
 const CARRIER_WAVEFORMS: CarrierWaveform[] = ['sine', 'triangle', 'square'];
@@ -81,6 +88,7 @@ interface ComposerQuickPreset {
   binauralVolume: number;
   carrierWaveform?: CarrierWaveform;
   stereoWidth?: number;
+  entrainmentMode?: EntrainmentMode;
   layers: { type: AmbientType; volume: number; enabled: boolean }[];
   duration: number;
   fadeIn: number;
@@ -174,6 +182,9 @@ export default function ComposerScreen() {
   const [binauralVolume, setBinauralVolume] = useState(0.5);
   const [carrierWaveform, setCarrierWaveform] = useState<CarrierWaveform>('sine');
   const [stereoWidth, setStereoWidth] = useState(1);
+  const [entrainmentMode, setEntrainmentMode] = useState<EntrainmentMode>('binaural');
+
+  const isBinaural = entrainmentMode === 'binaural';
 
   // Ambient layers
   const [layers, setLayers] = useState<AmbientLayer[]>([
@@ -201,6 +212,7 @@ export default function ComposerScreen() {
       binauralVolume,
       carrierWaveform,
       stereoWidth,
+      entrainmentMode,
       layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
       duration,
       fadeIn,
@@ -246,7 +258,7 @@ export default function ComposerScreen() {
       setExporting(false);
       Alert.alert('Export Failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, duration, fadeIn, fadeOut, addExport]);
+  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, duration, fadeIn, fadeOut, addExport]);
 
   const handleSavePreset = useCallback(async (name: string) => {
     const settings: ComposerSettings = {
@@ -255,6 +267,7 @@ export default function ComposerScreen() {
       binauralVolume,
       carrierWaveform,
       stereoWidth,
+      entrainmentMode,
       layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
       duration,
       fadeIn,
@@ -263,7 +276,7 @@ export default function ComposerScreen() {
     await savePreset(name, 'composer', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Composer Preset'}" saved to Library.`);
-  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, duration, fadeIn, fadeOut, savePreset]);
+  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, duration, fadeIn, fadeOut, savePreset]);
 
   // Load preset from Library
   const pendingLoad = usePresetStore((s) => s.pendingLoad);
@@ -276,6 +289,7 @@ export default function ComposerScreen() {
       setBinauralVolume(s.binauralVolume);
       setCarrierWaveform(s.carrierWaveform ?? 'sine');
       setStereoWidth(s.stereoWidth ?? 1);
+      setEntrainmentMode(s.entrainmentMode ?? 'binaural');
       setLayers(s.layers.map((l, i) => ({ ...l, id: nextLayerId++ })));
       setDuration(s.duration);
       setFadeIn(s.fadeIn);
@@ -356,17 +370,18 @@ export default function ComposerScreen() {
 
   // Live-update binaural params while playing
   const updateBinauralIfPlaying = useCallback(
-    (base: number, diff: number, vol: number, waveform?: CarrierWaveform, width?: number) => {
+    (base: number, diff: number, vol: number, opts?: { waveform?: CarrierWaveform; width?: number; mode?: EntrainmentMode }) => {
       if (!generatorRef.current?.isPlaying()) return;
       generatorRef.current.updateParams({
         leftFreq: base,
         rightFreq: base + diff,
         amplitude: vol,
-        carrierWaveform: waveform ?? carrierWaveform,
-        stereoWidth: width ?? stereoWidth,
+        carrierWaveform: opts?.waveform ?? carrierWaveform,
+        stereoWidth: opts?.width ?? stereoWidth,
+        entrainmentMode: opts?.mode ?? entrainmentMode,
       });
     },
-    [carrierWaveform, stereoWidth],
+    [carrierWaveform, stereoWidth, entrainmentMode],
   );
 
   const handleQuickPreset = useCallback((p: ComposerQuickPreset) => {
@@ -375,11 +390,16 @@ export default function ComposerScreen() {
     setBinauralVolume(p.binauralVolume);
     setCarrierWaveform(p.carrierWaveform ?? 'sine');
     setStereoWidth(p.stereoWidth ?? 1);
+    setEntrainmentMode(p.entrainmentMode ?? 'binaural');
     setLayers(p.layers.map((l) => ({ ...l, id: nextLayerId++ })));
     setDuration(p.duration);
     setFadeIn(p.fadeIn);
     setFadeOut(p.fadeOut);
-    updateBinauralIfPlaying(p.baseFrequency, p.beatDifference, p.binauralVolume, p.carrierWaveform ?? 'sine', p.stereoWidth ?? 1);
+    updateBinauralIfPlaying(p.baseFrequency, p.beatDifference, p.binauralVolume, {
+      waveform: p.carrierWaveform ?? 'sine',
+      width: p.stereoWidth ?? 1,
+      mode: p.entrainmentMode ?? 'binaural',
+    });
     if (ambientRef.current?.isPlaying()) {
       ambientRef.current.syncLayers(
         p.layers.map((l, i) => ({ ...l, id: i })) as AmbientLayerConfig[],
@@ -414,7 +434,7 @@ export default function ComposerScreen() {
   const handleCarrierWaveform = useCallback(
     (wf: CarrierWaveform) => {
       setCarrierWaveform(wf);
-      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, wf);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, { waveform: wf });
     },
     [baseFrequency, beatDifference, binauralVolume, updateBinauralIfPlaying],
   );
@@ -422,7 +442,15 @@ export default function ComposerScreen() {
   const handleStereoWidth = useCallback(
     (v: number) => {
       setStereoWidth(v);
-      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, undefined, v);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, { width: v });
+    },
+    [baseFrequency, beatDifference, binauralVolume, updateBinauralIfPlaying],
+  );
+
+  const handleEntrainmentMode = useCallback(
+    (mode: EntrainmentMode) => {
+      setEntrainmentMode(mode);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, { mode });
     },
     [baseFrequency, beatDifference, binauralVolume, updateBinauralIfPlaying],
   );
@@ -451,12 +479,13 @@ export default function ComposerScreen() {
           amplitude: binauralVolume,
           carrierWaveform,
           stereoWidth,
+          entrainmentMode,
         }),
         ambient.start(layers as AmbientLayerConfig[]),
       ]);
       setIsPlaying(true);
     }
-  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, getGenerator, getAmbient]);
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, getGenerator, getAmbient]);
 
   return (
     <Screen>
@@ -468,25 +497,46 @@ export default function ComposerScreen() {
           onSelect={handleQuickPreset}
         />
 
-        {/* ── Binaural Beat Section ──────────────────────────────── */}
+        {/* ── Entrainment Section ──────────────────────────────── */}
         <Card style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionLabel}>Binaural Beat</Text>
+            <Text style={styles.sectionLabel}>{isBinaural ? 'Binaural Beat' : 'Isochronal Tone'}</Text>
             <Text style={styles.badge}>{beatBadge}</Text>
           </View>
 
-          {/* Ear frequency readout */}
-          <View style={styles.earReadout}>
-            <View style={styles.earBox}>
-              <Text style={styles.earLabel}>LEFT EAR</Text>
-              <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
+          <SegmentedControl
+            options={ENTRAINMENT_MODES}
+            selected={entrainmentMode}
+            onSelect={handleEntrainmentMode}
+            labels={ENTRAINMENT_LABELS}
+            style={styles.modeToggle}
+          />
+
+          {isBinaural ? (
+            <View style={styles.earReadout}>
+              <View style={styles.earBox}>
+                <Text style={styles.earLabel}>LEFT EAR</Text>
+                <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
+              </View>
+              <View style={styles.earDivider} />
+              <View style={styles.earBox}>
+                <Text style={styles.earLabel}>RIGHT EAR</Text>
+                <Text style={styles.earFreq}>{Math.round(rightFreq)} Hz</Text>
+              </View>
             </View>
-            <View style={styles.earDivider} />
-            <View style={styles.earBox}>
-              <Text style={styles.earLabel}>RIGHT EAR</Text>
-              <Text style={styles.earFreq}>{Math.round(rightFreq)} Hz</Text>
+          ) : (
+            <View style={styles.earReadout}>
+              <View style={styles.earBox}>
+                <Text style={styles.earLabel}>CARRIER</Text>
+                <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
+              </View>
+              <View style={styles.earDivider} />
+              <View style={styles.earBox}>
+                <Text style={styles.earLabel}>PULSE RATE</Text>
+                <Text style={styles.earFreq}>{beatDifference.toFixed(1)} Hz</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           <PrimarySlider
             label="Base Frequency"
@@ -546,19 +596,29 @@ export default function ComposerScreen() {
             labels={CARRIER_LABELS}
           />
 
-          <PrimarySlider
-            label="Stereo Width"
-            value={stereoWidth}
-            onValueChange={handleStereoWidth}
-            min={0}
-            max={1}
-            step={0.01}
-            formatValue={(v) => `${Math.round(v * 100)}%`}
-            style={styles.slider}
-          />
-          <Text style={styles.hint}>
-            {stereoWidth < 0.1 ? 'Mono — no binaural separation' : stereoWidth > 0.9 ? 'Full stereo — maximum binaural effect' : 'Partial stereo separation'}
-          </Text>
+          {isBinaural && (
+            <>
+              <PrimarySlider
+                label="Stereo Width"
+                value={stereoWidth}
+                onValueChange={handleStereoWidth}
+                min={0}
+                max={1}
+                step={0.01}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                style={styles.slider}
+              />
+              <Text style={styles.hint}>
+                {stereoWidth < 0.1 ? 'Mono — no binaural separation' : stereoWidth > 0.9 ? 'Full stereo — maximum binaural effect' : 'Partial stereo separation'}
+              </Text>
+            </>
+          )}
+
+          {!isBinaural && (
+            <Text style={[styles.hint, styles.labelSpacing]}>
+              Isochronal tones pulse a single tone on and off at the beat frequency. Works with speakers — no headphones required.
+            </Text>
+          )}
         </Card>
 
         {/* ── Ambient Layers Section ─────────────────────────────── */}
@@ -712,7 +772,9 @@ export default function ComposerScreen() {
         {/* Safety notice */}
         <View style={styles.safetyNotice}>
           <Text style={styles.safetyText}>
-            🎧 Binaural beats require stereo headphones for the intended effect.
+            {isBinaural
+              ? '🎧 Binaural beats require stereo headphones for the intended effect.'
+              : '🔊 Isochronal tones work with speakers or headphones.'}
           </Text>
         </View>
 
@@ -768,6 +830,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
     overflow: 'hidden',
+  },
+  modeToggle: {
+    marginBottom: spacing.md,
   },
   earReadout: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ function smoothRamp(param: AudioParam, target: number, now: number, duration = 0
 }
 
 export type CarrierWaveform = 'sine' | 'triangle' | 'square';
+export type EntrainmentMode = 'binaural' | 'isochronal';
 
 export interface BinauralParams {
   leftFreq: number;
@@ -18,6 +19,7 @@ export interface BinauralParams {
   carrierWaveform?: CarrierWaveform;
   /** 0 = mono (no binaural separation), 1 = full stereo separation (default) */
   stereoWidth?: number;
+  entrainmentMode?: EntrainmentMode;
 }
 
 /**
@@ -44,6 +46,13 @@ export class BinauralGenerator {
   // Stereo width crossfade gains
   private leftToRight: GainNode | null = null;
   private rightToLeft: GainNode | null = null;
+  // Isochronal mode nodes
+  private isoOsc: OscillatorNode | null = null;
+  private pulseGain: GainNode | null = null;
+  private lfoOsc: OscillatorNode | null = null;
+  private lfoGain: GainNode | null = null;
+  private lfoOffset: ConstantSourceNode | null = null;
+  private currentMode: EntrainmentMode = 'binaural';
 
   // Native state
   private nativeSound: any = null;
@@ -113,79 +122,138 @@ export class BinauralGenerator {
     this.teardownWebGraph();
 
     const now = ctx.currentTime;
+    const mode = params.entrainmentMode ?? 'binaural';
+    this.currentMode = mode;
     const waveform = params.carrierWaveform ?? 'sine';
     const oscType = waveform === 'square' ? 'square' : waveform;
-    const width = params.stereoWidth ?? 1;
-    // crossGain: how much of each osc bleeds into the opposite channel
-    // At width=1: cross=0 (full separation). At width=0: cross=1 (mono).
-    const crossGain = 1 - width;
-
-    // Create channel merger: input 0 → left speaker, input 1 → right speaker
-    this.merger = ctx.createChannelMerger(2);
 
     // Master gain for overall volume and fade-out
     this.masterGain = ctx.createGain();
     this.masterGain.gain.setValueAtTime(params.amplitude, now);
-    this.merger.connect(this.masterGain);
     this.masterGain.connect(ctx.destination);
 
-    // Left oscillator → left channel (direct) + right channel (cross)
-    this.leftOsc = ctx.createOscillator();
-    this.leftOsc.type = oscType;
-    this.leftOsc.frequency.setValueAtTime(params.leftFreq, now);
-    this.leftGain = ctx.createGain();
-    this.leftGain.gain.setValueAtTime(1.0, now);
-    this.leftOsc.connect(this.leftGain);
-    this.leftGain.connect(this.merger, 0, 0); // → left channel
+    if (mode === 'isochronal') {
+      // Isochronal: single mono tone pulsed on/off at beat frequency
+      // Graph: isoOsc → pulseGain → masterGain → destination
+      // pulseGain.gain is modulated by: lfoOsc(square @ beatFreq) → lfoGain(0.5) + lfoOffset(0.5)
+      // This maps the square wave from [-1,1] to [0,1]
 
-    this.leftToRight = ctx.createGain();
-    this.leftToRight.gain.setValueAtTime(crossGain, now);
-    this.leftOsc.connect(this.leftToRight);
-    this.leftToRight.connect(this.merger, 0, 1); // left osc → right channel
+      this.isoOsc = ctx.createOscillator();
+      this.isoOsc.type = oscType;
+      this.isoOsc.frequency.setValueAtTime(params.leftFreq, now);
 
-    // Right oscillator → right channel (direct) + left channel (cross)
-    this.rightOsc = ctx.createOscillator();
-    this.rightOsc.type = oscType;
-    this.rightOsc.frequency.setValueAtTime(params.rightFreq, now);
-    this.rightGain = ctx.createGain();
-    this.rightGain.gain.setValueAtTime(1.0, now);
-    this.rightOsc.connect(this.rightGain);
-    this.rightGain.connect(this.merger, 0, 1); // → right channel
+      this.pulseGain = ctx.createGain();
+      this.pulseGain.gain.setValueAtTime(0, now); // controlled by LFO
 
-    this.rightToLeft = ctx.createGain();
-    this.rightToLeft.gain.setValueAtTime(crossGain, now);
-    this.rightOsc.connect(this.rightToLeft);
-    this.rightToLeft.connect(this.merger, 0, 0); // right osc → left channel
+      this.isoOsc.connect(this.pulseGain);
+      this.pulseGain.connect(this.masterGain);
 
-    this.leftOsc.start(now);
-    this.rightOsc.start(now);
+      // LFO: square wave at beat frequency, scaled to [0, 1]
+      // Square wave output [-1, 1] × lfoGain(0.5) = [-0.5, 0.5]
+      // Plus constant offset 0.5 = [0, 1]
+      this.lfoOsc = ctx.createOscillator();
+      this.lfoOsc.type = 'sine'; // use sine for smooth pulse envelope
+      this.lfoOsc.frequency.setValueAtTime(params.rightFreq - params.leftFreq, now);
+
+      this.lfoGain = ctx.createGain();
+      this.lfoGain.gain.setValueAtTime(0.5, now);
+
+      this.lfoOffset = ctx.createConstantSource();
+      this.lfoOffset.offset.setValueAtTime(0.5, now);
+
+      // Connect LFO chain to pulseGain's gain param
+      this.lfoOsc.connect(this.lfoGain);
+      this.lfoGain.connect(this.pulseGain.gain);
+      this.lfoOffset.connect(this.pulseGain.gain);
+
+      this.isoOsc.start(now);
+      this.lfoOsc.start(now);
+      this.lfoOffset.start(now);
+    } else {
+      // Binaural: stereo L/R with separate frequencies
+      const width = params.stereoWidth ?? 1;
+      const crossGain = 1 - width;
+
+      this.merger = ctx.createChannelMerger(2);
+      this.merger.connect(this.masterGain);
+
+      // Left oscillator → left channel (direct) + right channel (cross)
+      this.leftOsc = ctx.createOscillator();
+      this.leftOsc.type = oscType;
+      this.leftOsc.frequency.setValueAtTime(params.leftFreq, now);
+      this.leftGain = ctx.createGain();
+      this.leftGain.gain.setValueAtTime(1.0, now);
+      this.leftOsc.connect(this.leftGain);
+      this.leftGain.connect(this.merger, 0, 0);
+
+      this.leftToRight = ctx.createGain();
+      this.leftToRight.gain.setValueAtTime(crossGain, now);
+      this.leftOsc.connect(this.leftToRight);
+      this.leftToRight.connect(this.merger, 0, 1);
+
+      // Right oscillator → right channel (direct) + left channel (cross)
+      this.rightOsc = ctx.createOscillator();
+      this.rightOsc.type = oscType;
+      this.rightOsc.frequency.setValueAtTime(params.rightFreq, now);
+      this.rightGain = ctx.createGain();
+      this.rightGain.gain.setValueAtTime(1.0, now);
+      this.rightOsc.connect(this.rightGain);
+      this.rightGain.connect(this.merger, 0, 1);
+
+      this.rightToLeft = ctx.createGain();
+      this.rightToLeft.gain.setValueAtTime(crossGain, now);
+      this.rightOsc.connect(this.rightToLeft);
+      this.rightToLeft.connect(this.merger, 0, 0);
+
+      this.leftOsc.start(now);
+      this.rightOsc.start(now);
+    }
   }
 
   private updateWebParams(params: BinauralParams): void {
-    if (!this.audioCtx || !this.leftOsc || !this.rightOsc || !this.masterGain) return;
+    if (!this.audioCtx || !this.masterGain) return;
+
+    const newMode = params.entrainmentMode ?? 'binaural';
+    // If mode changed, rebuild the graph
+    if (newMode !== this.currentMode) {
+      this.playWeb(params);
+      return;
+    }
 
     const now = this.audioCtx.currentTime;
     const rampTime = 0.03; // 30ms ramp prevents clicks
 
-    smoothRamp(this.leftOsc.frequency, params.leftFreq, now, rampTime);
-    smoothRamp(this.rightOsc.frequency, params.rightFreq, now, rampTime);
     smoothRamp(this.masterGain.gain, params.amplitude, now, rampTime);
 
-    // Update carrier waveform (instant switch — no ramp needed)
     const waveform = params.carrierWaveform ?? 'sine';
     const oscType = waveform === 'square' ? 'square' : waveform;
-    if (this.leftOsc.type !== oscType) {
-      this.leftOsc.type = oscType;
-      this.rightOsc.type = oscType;
-    }
 
-    // Update stereo width crossfade
-    const crossGain = 1 - (params.stereoWidth ?? 1);
-    if (this.leftToRight) smoothRamp(this.leftToRight.gain, crossGain, now, rampTime);
-    if (this.rightToLeft) smoothRamp(this.rightToLeft.gain, crossGain, now, rampTime);
+    if (this.currentMode === 'isochronal') {
+      if (this.isoOsc) {
+        smoothRamp(this.isoOsc.frequency, params.leftFreq, now, rampTime);
+        if (this.isoOsc.type !== oscType) this.isoOsc.type = oscType;
+      }
+      if (this.lfoOsc) {
+        const beatFreq = Math.abs(params.rightFreq - params.leftFreq);
+        smoothRamp(this.lfoOsc.frequency, beatFreq, now, rampTime);
+      }
+    } else {
+      if (this.leftOsc && this.rightOsc) {
+        smoothRamp(this.leftOsc.frequency, params.leftFreq, now, rampTime);
+        smoothRamp(this.rightOsc.frequency, params.rightFreq, now, rampTime);
+        if (this.leftOsc.type !== oscType) {
+          this.leftOsc.type = oscType;
+          this.rightOsc.type = oscType;
+        }
+      }
+      const crossGain = 1 - (params.stereoWidth ?? 1);
+      if (this.leftToRight) smoothRamp(this.leftToRight.gain, crossGain, now, rampTime);
+      if (this.rightToLeft) smoothRamp(this.rightToLeft.gain, crossGain, now, rampTime);
+    }
   }
 
   private teardownWebGraph(): void {
+    // Binaural nodes
     if (this.leftOsc) {
       try { this.leftOsc.stop(); this.leftOsc.disconnect(); } catch { /* */ }
       this.leftOsc = null;
@@ -210,6 +278,28 @@ export class BinauralGenerator {
       try { this.rightToLeft.disconnect(); } catch { /* */ }
       this.rightToLeft = null;
     }
+    // Isochronal nodes
+    if (this.isoOsc) {
+      try { this.isoOsc.stop(); this.isoOsc.disconnect(); } catch { /* */ }
+      this.isoOsc = null;
+    }
+    if (this.pulseGain) {
+      try { this.pulseGain.disconnect(); } catch { /* */ }
+      this.pulseGain = null;
+    }
+    if (this.lfoOsc) {
+      try { this.lfoOsc.stop(); this.lfoOsc.disconnect(); } catch { /* */ }
+      this.lfoOsc = null;
+    }
+    if (this.lfoGain) {
+      try { this.lfoGain.disconnect(); } catch { /* */ }
+      this.lfoGain = null;
+    }
+    if (this.lfoOffset) {
+      try { this.lfoOffset.stop(); this.lfoOffset.disconnect(); } catch { /* */ }
+      this.lfoOffset = null;
+    }
+    // Shared nodes
     if (this.merger) {
       try { this.merger.disconnect(); } catch { /* */ }
       this.merger = null;
@@ -301,6 +391,7 @@ function paramsEqual(a: BinauralParams, b: BinauralParams): boolean {
     a.rightFreq === b.rightFreq &&
     Math.abs(a.amplitude - b.amplitude) < 0.005 &&
     (a.carrierWaveform ?? 'sine') === (b.carrierWaveform ?? 'sine') &&
-    Math.abs((a.stereoWidth ?? 1) - (b.stereoWidth ?? 1)) < 0.005
+    Math.abs((a.stereoWidth ?? 1) - (b.stereoWidth ?? 1)) < 0.005 &&
+    (a.entrainmentMode ?? 'binaural') === (b.entrainmentMode ?? 'binaural')
   );
 }
