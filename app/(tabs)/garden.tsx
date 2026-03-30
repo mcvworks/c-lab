@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Screen, SectionHeader, PrimarySlider } from '@/src/components';
 import { DroneGardenEngine } from '@/src/audio/DroneGardenEngine';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -148,6 +148,7 @@ export default function DroneGardenScreen() {
 
   return (
     <Screen>
+      <ScrollView showsVerticalScrollIndicator={false}>
       <SectionHeader title="Drone Garden" subtitle="Tap to plant tone seeds" />
 
       {/* Canvas */}
@@ -253,6 +254,9 @@ export default function DroneGardenScreen() {
       <Text style={styles.hint}>
         Long-press a seed to remove it. Each seed plays a continuous tone — higher on the canvas means higher pitch, left/right controls stereo panning.
       </Text>
+
+      <View style={styles.bottomSpacer} />
+      </ScrollView>
     </Screen>
   );
 }
@@ -360,6 +364,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginHorizontal: spacing.md,
     lineHeight: 18,
-    marginBottom: spacing.xxl,
+  },
+  bottomSpacer: {
+    height: spacing.xxl,
   },
 });
