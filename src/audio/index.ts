@@ -20,3 +20,4 @@ export { RoomReverbEngine, ROOM_CONFIGS, ROOM_PRESETS, ROOM_LABELS } from './Roo
 export type { RoomPreset } from './RoomReverbEngine';
 export { DroneGardenEngine } from './DroneGardenEngine';
 export type { Seed as DroneGardenSeed } from './DroneGardenEngine';
+export { IntervalExplorerEngine, INTERVALS, detectInterval } from './IntervalExplorerEngine';

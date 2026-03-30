@@ -16,3 +16,4 @@ export { default as SympatheticStringsView } from './SympatheticStringsView';
 export { default as RoomVisualizer } from './RoomVisualizer';
 export { default as LissajousView } from './LissajousView';
 export { default as SpectrogramView } from './SpectrogramView';
+export { default as IntervalBeatView } from './IntervalBeatView';

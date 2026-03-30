@@ -20,11 +20,12 @@ import {
   RoomVisualizer,
   LissajousView,
   SpectrogramView,
+  IntervalBeatView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
-import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS } from '@/src/audio';
+import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -102,6 +103,18 @@ const LISSAJOUS_RATIOS = [
   { label: '4:3', a: 4, b: 3 },
   { label: '5:4', a: 5, b: 4 },
   { label: '3:1', a: 3, b: 1 },
+] as const;
+
+// ── Interval Explorer presets ───────────────────────────────────
+const INTERVAL_PRESETS = [
+  { label: 'Unison',  ratio: 1      },
+  { label: 'Oct',     ratio: 2      },
+  { label: 'P5',      ratio: 3 / 2  },
+  { label: 'P4',      ratio: 4 / 3  },
+  { label: 'Maj3',    ratio: 5 / 4  },
+  { label: 'Min3',    ratio: 6 / 5  },
+  { label: 'Tri',     ratio: 45/32  },
+  { label: 'Beat',    ratio: 1.005  }, // near-unison for audible beating
 ] as const;
 
 /** Color tint based on frequency ratio complexity */
@@ -229,6 +242,71 @@ export default function ExploreScreen() {
     setLissFreqA(Math.round(baseFreq));
     setLissFreqB(Math.round(baseFreq * b / a));
   }, [lissSyncTone, sourceMode, frequency, lissFreqA]);
+
+  // ── Interval Explorer ───────────────────────────────────────────
+  const [intervalEnabled, setIntervalEnabled] = useState(false);
+  const [intervalFreq1, setIntervalFreq1] = useState(440);
+  const [intervalFreq2, setIntervalFreq2] = useState(442);
+  const [intervalVolume, setIntervalVol] = useState(0.35);
+  const intervalEngineRef = useRef<IntervalExplorerEngine | null>(null);
+
+  const getIntervalEngine = useCallback(() => {
+    if (!intervalEngineRef.current) {
+      intervalEngineRef.current = new IntervalExplorerEngine();
+    }
+    return intervalEngineRef.current;
+  }, []);
+
+  const intervalPlaying = intervalEnabled && isPlaying;
+
+  // Start / stop interval engine with playback
+  useEffect(() => {
+    const engine = getIntervalEngine();
+    if (intervalPlaying) {
+      if (!engine.isActive()) {
+        engine.start(intervalFreq1, intervalFreq2, intervalVolume);
+      }
+    } else {
+      engine.stop();
+    }
+  }, [intervalPlaying, getIntervalEngine]);
+
+  // Update frequencies live
+  useEffect(() => {
+    const engine = getIntervalEngine();
+    if (engine.isActive()) {
+      engine.setFreq1(intervalFreq1);
+    }
+  }, [intervalFreq1, getIntervalEngine]);
+
+  useEffect(() => {
+    const engine = getIntervalEngine();
+    if (engine.isActive()) {
+      engine.setFreq2(intervalFreq2);
+    }
+  }, [intervalFreq2, getIntervalEngine]);
+
+  // Update volume live
+  useEffect(() => {
+    const engine = getIntervalEngine();
+    if (engine.isActive()) {
+      engine.setVolume(intervalVolume);
+    }
+  }, [intervalVolume, getIntervalEngine]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      intervalEngineRef.current?.dispose();
+    };
+  }, []);
+
+  const beatFreq = Math.abs(intervalFreq1 - intervalFreq2);
+  const intervalName = useMemo(() => detectInterval(intervalFreq1, intervalFreq2), [intervalFreq1, intervalFreq2]);
+
+  const handleIntervalPreset = useCallback((ratio: number) => {
+    setIntervalFreq2(Math.round(intervalFreq1 * ratio));
+  }, [intervalFreq1]);
 
   // ── Sympathetic Strings ─────────────────────────────────────────
   const [stringsEnabled, setStringsEnabled] = useState(false);
@@ -491,6 +569,102 @@ export default function ExploreScreen() {
 
               <Text style={styles.noiseHint}>
                 Lissajous figures trace two sine waves against each other. Simple frequency ratios create clean, stable patterns. Slowly detune one frequency to see the figure rotate and morph.
+              </Text>
+            </>
+          )}
+        </Card>
+
+        {/* Interval Explorer */}
+        <SectionHeader title="INTERVAL EXPLORER" label />
+        <Card style={styles.card}>
+          <View style={styles.stringsHeaderRow}>
+            <Text style={styles.controlLabel}>Beat Frequency</Text>
+            <PrimaryButton
+              title={intervalEnabled ? 'ON' : 'OFF'}
+              variant={intervalEnabled ? 'filled' : 'ghost'}
+              onPress={() => setIntervalEnabled((v) => !v)}
+              style={styles.stringsToggle}
+            />
+          </View>
+
+          {intervalEnabled && (
+            <>
+              <IntervalBeatView
+                freq1={intervalFreq1}
+                freq2={intervalFreq2}
+                width={cardContentWidth}
+                height={cardContentWidth * 0.55}
+                isPlaying={intervalPlaying}
+              />
+
+              {/* Beat info display */}
+              <View style={styles.intervalInfoRow}>
+                <View style={styles.intervalInfoBlock}>
+                  <Text style={styles.intervalInfoLabel}>Beat Frequency</Text>
+                  <Text style={styles.intervalInfoValue}>
+                    {beatFreq < 0.1 ? '0' : beatFreq.toFixed(1)} Hz
+                  </Text>
+                </View>
+                <View style={styles.intervalInfoBlock}>
+                  <Text style={styles.intervalInfoLabel}>Interval</Text>
+                  <Text style={[styles.intervalInfoValue, { color: intervalName ? colors.accent : colors.textMuted }]}>
+                    {intervalName ?? '—'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Interval preset buttons */}
+              <View style={styles.intervalPresetWrap}>
+                {INTERVAL_PRESETS.map((p) => {
+                  const targetF2 = Math.round(intervalFreq1 * p.ratio);
+                  const isActive = Math.abs(intervalFreq2 - targetF2) < 2;
+                  return (
+                    <PrimaryButton
+                      key={p.label}
+                      title={p.label}
+                      variant={isActive ? 'filled' : 'ghost'}
+                      onPress={() => handleIntervalPreset(p.ratio)}
+                      style={styles.intervalPresetBtn}
+                    />
+                  );
+                })}
+              </View>
+
+              <PrimarySlider
+                label="Tone 1"
+                value={intervalFreq1}
+                onValueChange={(v) => setIntervalFreq1(Math.round(v))}
+                min={80}
+                max={1000}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} Hz`}
+                style={styles.slider}
+              />
+
+              <PrimarySlider
+                label="Tone 2"
+                value={intervalFreq2}
+                onValueChange={(v) => setIntervalFreq2(Math.round(v))}
+                min={80}
+                max={1000}
+                step={1}
+                formatValue={(v) => `${Math.round(v)} Hz`}
+                style={styles.slider}
+              />
+
+              <PrimarySlider
+                label="Volume"
+                value={intervalVolume}
+                onValueChange={setIntervalVol}
+                min={0}
+                max={0.8}
+                step={0.01}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                style={styles.slider}
+              />
+
+              <Text style={styles.noiseHint}>
+                When two tones are close in frequency, they interfere to produce audible "beats" — a pulsing volume effect at the difference frequency. Piano tuners listen for this wobble to fine-tune strings. Try the "Beat" preset to hear it clearly, then slowly adjust Tone 2.
               </Text>
             </>
           )}
@@ -977,6 +1151,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  intervalInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  intervalInfoBlock: {
+    alignItems: 'center',
+  },
+  intervalInfoLabel: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  intervalInfoValue: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+  },
+  intervalPresetWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  intervalPresetBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 48,
   },
   bottomSpacer: {
     height: spacing.xxl,
