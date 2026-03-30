@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import Svg, { Path, Circle as SvgCircle, ClipPath, Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle as SvgCircle, ClipPath, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { colors } from '@/src/theme';
+import type { WaveformType } from '@/src/audio';
 
 type PlateShape = 'circle' | 'square' | 'hexagon';
 type ParticleStyle = 'sand' | 'salt' | 'metal';
@@ -13,12 +14,13 @@ interface SandPlateViewProps {
   amplitude: number;
   plateShape: PlateShape;
   particleStyle: ParticleStyle;
+  waveform?: WaveformType;
   isPlaying?: boolean;
   isFrozen?: boolean;
   style?: ViewStyle;
 }
 
-const PARTICLE_COUNT = 280;
+const PARTICLE_COUNT = 600;
 
 const PARTICLE_COLORS: Record<ParticleStyle, { main: string; dim: string }> = {
   sand: { main: '#d4a574', dim: '#a07850' },
@@ -30,6 +32,17 @@ const PARTICLE_RADIUS: Record<ParticleStyle, number> = {
   sand: 1.8,
   salt: 1.4,
   metal: 2.0,
+};
+
+/** Per-material physics tuning */
+const PARTICLE_PHYSICS: Record<ParticleStyle, {
+  damping: number;
+  attractMultiplier: number;
+  vibeMultiplier: number;
+}> = {
+  sand: { damping: 0.88, attractMultiplier: 1.0, vibeMultiplier: 1.0 },
+  salt: { damping: 0.82, attractMultiplier: 1.3, vibeMultiplier: 1.4 },
+  metal: { damping: 0.93, attractMultiplier: 0.6, vibeMultiplier: 0.5 },
 };
 
 /** Chladni plate vibration pattern.
@@ -66,12 +79,40 @@ function getModesForFrequency(freq: number): { n: number; m: number; n2: number;
   };
 }
 
+/**
+ * Harmonic weights by waveform type.
+ * Square wave has odd harmonics (3rd, 5th, 7th…), saw has all, triangle has odd with fast decay.
+ * Weights are relative amplitudes of the 2nd–5th harmonics used to enrich the Chladni pattern.
+ */
+const WAVEFORM_HARMONICS: Record<string, number[]> = {
+  sine:     [],
+  square:   [0, 0.33, 0, 0.2],       // odd harmonics: 3rd (1/3), 5th (1/5)
+  saw:      [0.5, 0.33, 0.25, 0.2],  // all harmonics: 1/2, 1/3, 1/4, 1/5
+  triangle: [0, 0.11, 0, 0.04],      // odd harmonics with 1/n² decay
+};
+
 /** Compute blended Chladni field value at (x,y) in normalized [-1,1] space */
-function fieldAt(x: number, y: number, freq: number): number {
+function fieldAt(x: number, y: number, freq: number, waveform: WaveformType = 'sine'): number {
   const { n, m, n2, m2, blend } = getModesForFrequency(freq);
   const v1 = chladni(x, y, n, m);
   const v2 = chladni(x, y, n2, m2);
-  return v1 * (1 - blend) + v2 * blend;
+  let value = v1 * (1 - blend) + v2 * blend;
+
+  // Blend in harmonic mode pairs for non-sine waveforms
+  const harmonics = WAVEFORM_HARMONICS[waveform];
+  if (harmonics && harmonics.length > 0) {
+    for (let h = 0; h < harmonics.length; h++) {
+      const weight = harmonics[h];
+      if (weight === 0) continue;
+      const hFreq = freq * (h + 2); // 2nd, 3rd, 4th, 5th harmonic
+      const hModes = getModesForFrequency(Math.min(hFreq, 2000));
+      const hv1 = chladni(x, y, hModes.n, hModes.m);
+      const hv2 = chladni(x, y, hModes.n2, hModes.m2);
+      value += (hv1 * (1 - hModes.blend) + hv2 * hModes.blend) * weight;
+    }
+  }
+
+  return value;
 }
 
 /** Numerical gradient of |field| at position — points toward lower |field| (nodal lines) */
@@ -79,11 +120,12 @@ function fieldGradient(
   x: number,
   y: number,
   freq: number,
+  waveform: WaveformType = 'sine',
 ): { gx: number; gy: number } {
   const eps = 0.005;
-  const fCenter = Math.abs(fieldAt(x, y, freq));
-  const fRight = Math.abs(fieldAt(x + eps, y, freq));
-  const fUp = Math.abs(fieldAt(x, y + eps, freq));
+  const fCenter = Math.abs(fieldAt(x, y, freq, waveform));
+  const fRight = Math.abs(fieldAt(x + eps, y, freq, waveform));
+  const fUp = Math.abs(fieldAt(x, y + eps, freq, waveform));
   return {
     gx: (fRight - fCenter) / eps,
     gy: (fUp - fCenter) / eps,
@@ -192,19 +234,26 @@ export default function SandPlateView({
   amplitude,
   plateShape,
   particleStyle,
+  waveform = 'sine',
   isPlaying = false,
   isFrozen = false,
   style,
 }: SandPlateViewProps) {
   const size = Math.min(width, height);
-  const particlePathRef = useRef<Path | null>(null);
-  const outlinePathRef = useRef<Path | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
   const particlesRef = useRef<Particle[]>(initParticles(PARTICLE_COUNT, plateShape));
 
-  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, isPlaying, isFrozen });
-  propsRef.current = { frequency, amplitude, plateShape, particleStyle, isPlaying, isFrozen };
+  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, waveform, isPlaying, isFrozen });
+  propsRef.current = { frequency, amplitude, plateShape, particleStyle, waveform, isPlaying, isFrozen };
+
+  /** Accumulated simulation time for time-varying jitter */
+  const simTimeRef = useRef(0);
+
+  // State-driven path strings — setNativeProps doesn't work on web
+  const [particleD, setParticleD] = useState(() =>
+    particlesPath(particlesRef.current, size, PARTICLE_RADIUS[particleStyle]),
+  );
 
   // Reinitialize particles when plate shape changes
   const prevShapeRef = useRef(plateShape);
@@ -212,41 +261,43 @@ export default function SandPlateView({
     if (plateShape !== prevShapeRef.current) {
       prevShapeRef.current = plateShape;
       particlesRef.current = initParticles(PARTICLE_COUNT, plateShape);
-      // Update outline
-      outlinePathRef.current?.setNativeProps({ d: plateOutlinePath(size, plateShape) });
-      // Render new positions immediately
       const r = PARTICLE_RADIUS[propsRef.current.particleStyle];
-      const path = particlesPath(particlesRef.current, size, r);
-      particlePathRef.current?.setNativeProps({ d: path });
+      setParticleD(particlesPath(particlesRef.current, size, r));
     }
   }, [plateShape, size]);
 
   const simulateStep = useCallback((dt: number) => {
-    const { frequency: freq, amplitude: amp, plateShape: shape, isFrozen: frozen } = propsRef.current;
+    const { frequency: freq, amplitude: amp, plateShape: shape, particleStyle: ps, waveform: wf, isFrozen: frozen } = propsRef.current;
     if (frozen) return;
 
+    simTimeRef.current += dt;
+    const t = simTimeRef.current;
+
     const particles = particlesRef.current;
-    const attractStrength = 2.0 * amp;
-    const damping = 0.85;
-    const jitter = 0.15 * amp;
+    const phys = PARTICLE_PHYSICS[ps];
+    const attractStrength = 5.0 * amp * phys.attractMultiplier;
+    const damping = phys.damping;
+    // Direct position vibration — bypasses velocity/damping so it stays visible
+    const vibeRadius = 0.008 * amp * phys.vibeMultiplier;
 
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
 
       // Compute gradient — particles move toward nodal lines (lower |field|)
-      const grad = fieldGradient(p.x, p.y, freq);
+      const grad = fieldGradient(p.x, p.y, freq, wf);
       const ax = -grad.gx * attractStrength;
       const ay = -grad.gy * attractStrength;
 
-      // Add subtle jitter for organic feel
-      const jx = (Math.sin(i * 3.7 + dt * 50) * 0.5 + Math.sin(i * 7.1 + dt * 30) * 0.3) * jitter;
-      const jy = (Math.sin(i * 5.3 + dt * 40) * 0.5 + Math.sin(i * 11.3 + dt * 20) * 0.3) * jitter;
-
-      p.vx = (p.vx + (ax + jx) * dt) * damping;
-      p.vy = (p.vy + (ay + jy) * dt) * damping;
+      p.vx = (p.vx + ax * dt) * damping;
+      p.vy = (p.vy + ay * dt) * damping;
 
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+
+      // Continuous plate vibration applied directly to position
+      // Each particle gets a unique phase so they don't move in unison
+      p.x += Math.sin(i * 1.3 + t * 14) * vibeRadius;
+      p.y += Math.cos(i * 2.1 + t * 12) * vibeRadius;
 
       // Clamp to plate bounds
       if (!isInsidePlate(p.x, p.y, shape)) {
@@ -269,8 +320,7 @@ export default function SandPlateView({
   const render = useCallback(() => {
     const { particleStyle: ps } = propsRef.current;
     const r = PARTICLE_RADIUS[ps];
-    const path = particlesPath(particlesRef.current, size, r);
-    particlePathRef.current?.setNativeProps({ d: path });
+    setParticleD(particlesPath(particlesRef.current, size, r));
   }, [size]);
 
   // Animation loop
@@ -311,26 +361,28 @@ export default function SandPlateView({
     if (!isPlaying) {
       render();
     }
-  }, [frequency, amplitude, particleStyle, isPlaying, render]);
+  }, [frequency, amplitude, particleStyle, waveform, isPlaying, render]);
 
-  // Scatter particles when frequency changes significantly while playing
+  // Scatter particles when frequency changes significantly or waveform changes while playing
   const prevFreqRef = useRef(frequency);
+  const prevWaveformRef = useRef(waveform);
   useEffect(() => {
-    if (isPlaying && Math.abs(frequency - prevFreqRef.current) > 30) {
-      // Give particles a velocity kick to re-settle on new nodal lines
+    const freqChanged = Math.abs(frequency - prevFreqRef.current) > 30;
+    const waveformChanged = waveform !== prevWaveformRef.current;
+    if (isPlaying && (freqChanged || waveformChanged)) {
       for (const p of particlesRef.current) {
         p.vx += (Math.random() - 0.5) * 0.8;
         p.vy += (Math.random() - 0.5) * 0.8;
       }
     }
     prevFreqRef.current = frequency;
-  }, [frequency, isPlaying]);
+    prevWaveformRef.current = waveform;
+  }, [frequency, waveform, isPlaying]);
 
   const pColor = PARTICLE_COLORS[particleStyle];
 
   if (size <= 0) return null;
 
-  const initialParticlePath = particlesPath(particlesRef.current, size, PARTICLE_RADIUS[particleStyle]);
   const outlineD = plateOutlinePath(size, plateShape);
   const clipD = plateClipPath(size, plateShape);
 
@@ -359,7 +411,6 @@ export default function SandPlateView({
 
         {/* Plate outline */}
         <Path
-          ref={outlinePathRef}
           d={outlineD}
           fill="none"
           stroke={isPlaying ? colors.accent : colors.border}
@@ -369,8 +420,7 @@ export default function SandPlateView({
 
         {/* Particles — clipped to plate shape */}
         <Path
-          ref={particlePathRef}
-          d={initialParticlePath}
+          d={particleD}
           fill={pColor.main}
           opacity={0.85}
           clipPath="url(#plateClip)"

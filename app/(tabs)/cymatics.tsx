@@ -3,6 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
+import type { WaveformType } from '@/src/audio';
 import type { ExploreSettings } from '@/src/types/preset';
 import {
   Screen,
@@ -14,7 +15,9 @@ import {
   SegmentedControl,
   SandPlateView,
   SavePresetModal,
+  PresetBar,
 } from '@/src/components';
+import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
 const PLATE_SHAPES = ['circle', 'square', 'hexagon'] as const;
@@ -33,6 +36,14 @@ const PARTICLE_STYLE_LABELS: Record<ParticleStyle, string> = {
   metal: 'Metal',
 };
 
+const WAVEFORMS: WaveformType[] = ['sine', 'square', 'saw', 'triangle'];
+const WAVEFORM_LABELS: Record<WaveformType, string> = {
+  sine: 'Sine',
+  square: 'Square',
+  saw: 'Saw',
+  triangle: 'Tri',
+};
+
 const FREQ_PRESETS = [
   { label: '174', freq: 174 },
   { label: '285', freq: 285 },
@@ -40,6 +51,24 @@ const FREQ_PRESETS = [
   { label: '528', freq: 528 },
   { label: '639', freq: 639 },
 ] as const;
+
+// ── Quick presets ─────────────────────────────────────────────────────
+interface CymaticsQuickPreset {
+  frequency: number;
+  amplitude: number;
+  waveform: WaveformType;
+  plateShape: PlateShape;
+  particleStyle: ParticleStyle;
+}
+
+const CYMATICS_PRESETS: QuickPreset<CymaticsQuickPreset>[] = [
+  { label: 'Classic',      settings: { frequency: 440, amplitude: 0.6,  waveform: 'sine',     plateShape: 'circle',  particleStyle: 'sand'  } },
+  { label: 'Crystal Star', settings: { frequency: 528, amplitude: 0.75, waveform: 'sine',     plateShape: 'hexagon', particleStyle: 'salt'  } },
+  { label: 'Metal Grid',   settings: { frequency: 396, amplitude: 0.8,  waveform: 'square',   plateShape: 'square',  particleStyle: 'metal' } },
+  { label: 'Deep Ripple',  settings: { frequency: 174, amplitude: 0.55, waveform: 'triangle', plateShape: 'circle',  particleStyle: 'sand'  } },
+  { label: 'Fine Detail',  settings: { frequency: 639, amplitude: 0.65, waveform: 'sine',     plateShape: 'circle',  particleStyle: 'salt'  } },
+  { label: 'Buzz Hex',     settings: { frequency: 285, amplitude: 0.7,  waveform: 'saw',      plateShape: 'hexagon', particleStyle: 'metal' } },
+];
 
 export default function CymaticsScreen() {
   // Cymatics-specific visual state (not shared)
@@ -49,10 +78,27 @@ export default function CymaticsScreen() {
 
   // Shared audio state
   const {
-    frequency, amplitude, isPlaying,
+    frequency, amplitude, waveform, isPlaying,
     setFrequency, setAmplitude, setWaveform, setSourceMode,
     play, stop,
   } = useAudioStore();
+
+  const handleQuickPreset = useCallback((p: CymaticsQuickPreset) => {
+    setFrequency(p.frequency);
+    setAmplitude(p.amplitude);
+    setWaveform(p.waveform);
+    setPlateShape(p.plateShape);
+    setParticleStyle(p.particleStyle);
+  }, [setFrequency, setAmplitude, setWaveform]);
+
+  const activePresetIndex = CYMATICS_PRESETS.findIndex((p) => {
+    const s = p.settings;
+    return s.frequency === frequency
+      && s.amplitude === amplitude
+      && s.waveform === waveform
+      && s.plateShape === plateShape
+      && s.particleStyle === particleStyle;
+  });
 
   const { plateSize, isTablet } = useResponsive();
 
@@ -65,13 +111,13 @@ export default function CymaticsScreen() {
       sourceMode: 'tone',
       frequency,
       amplitude,
-      waveform: 'sine',
+      waveform,
       noiseType: 'white',
     };
     await savePreset(name, 'explore', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Cymatics Preset'}" saved to Library.`);
-  }, [frequency, amplitude, savePreset]);
+  }, [frequency, amplitude, waveform, savePreset]);
 
   // Ensure presets are loaded
   const presetLoaded = usePresetStore((s) => s.loaded);
@@ -82,15 +128,13 @@ export default function CymaticsScreen() {
 
   const handlePlay = useCallback(async () => {
     try {
-      // Cymatics always uses sine tone mode
       setSourceMode('tone');
-      setWaveform('sine');
       await play();
       setIsFrozen(false);
     } catch {
       Alert.alert('Audio Error', 'Could not start playback.');
     }
-  }, [play, setSourceMode, setWaveform]);
+  }, [play, setSourceMode]);
 
   const handleStop = useCallback(async () => {
     await stop();
@@ -105,16 +149,23 @@ export default function CymaticsScreen() {
     setIsFrozen(false);
     setFrequency(440);
     setAmplitude(0.6);
+    setWaveform('sine');
     setPlateShape('circle');
     setParticleStyle('sand');
-  }, [stop, setFrequency, setAmplitude]);
+  }, [stop, setFrequency, setAmplitude, setWaveform]);
 
-  const freqBadge = `${Math.round(frequency)} Hz · ${PLATE_SHAPE_LABELS[plateShape]}`;
+  const freqBadge = `${Math.round(frequency)} Hz · ${WAVEFORM_LABELS[waveform]} · ${PLATE_SHAPE_LABELS[plateShape]}`;
 
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <SectionHeader title="Cymatics" subtitle="Digital sand plate simulation" />
+
+        <PresetBar
+          presets={CYMATICS_PRESETS}
+          onSelect={handleQuickPreset}
+          activeIndex={activePresetIndex >= 0 ? activePresetIndex : null}
+        />
 
         {/* Sand Plate Visualization */}
         <Card style={styles.vizCard} glowing={isPlaying}>
@@ -130,6 +181,7 @@ export default function CymaticsScreen() {
               amplitude={amplitude}
               plateShape={plateShape}
               particleStyle={particleStyle}
+              waveform={waveform}
               isPlaying={isPlaying}
               isFrozen={isFrozen}
             />
@@ -205,11 +257,19 @@ export default function CymaticsScreen() {
             </Card>
           </View>
 
-          {/* Plate & Material */}
+          {/* Waveform & Plate */}
           <View style={isTablet ? styles.tabletHalf : undefined}>
-            <SectionHeader title="PLATE & MATERIAL" label />
+            <SectionHeader title="WAVEFORM & PLATE" label />
             <Card style={styles.card}>
-              <Text style={styles.controlLabel}>Plate Shape</Text>
+              <Text style={styles.controlLabel}>Waveform</Text>
+              <SegmentedControl
+                options={WAVEFORMS}
+                selected={waveform}
+                onSelect={setWaveform}
+                labels={WAVEFORM_LABELS}
+              />
+
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Plate Shape</Text>
               <SegmentedControl
                 options={PLATE_SHAPES}
                 selected={plateShape}
