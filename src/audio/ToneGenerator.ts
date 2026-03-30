@@ -3,6 +3,7 @@ import { AudioParams, WaveformType } from './types';
 import { generateSamples } from './generateSamples';
 import { generateNoiseSamples } from './generateNoiseSamples';
 import { encodeWavBase64 } from './encodeWav';
+import { RoomReverbEngine, type RoomPreset } from './RoomReverbEngine';
 
 /** Map our waveform names to Web Audio OscillatorNode type values. */
 const OSC_TYPE: Record<WaveformType, OscillatorType> = {
@@ -49,6 +50,9 @@ export class ToneGenerator {
   // Web Audio — panning
   private panner: StereoPannerNode | null = null;
 
+  // Web Audio — room reverb
+  private reverbEngine: RoomReverbEngine = new RoomReverbEngine();
+
   // Web Audio — noise mode (buffer-based)
   private noiseSource: AudioBufferSourceNode | null = null;
   private noiseGain: GainNode | null = null;
@@ -86,10 +90,30 @@ export class ToneGenerator {
 
   async dispose(): Promise<void> {
     await this.stop();
+    this.reverbEngine.dispose();
     if (this.audioCtx) {
       await this.audioCtx.close();
       this.audioCtx = null;
     }
+  }
+
+  /** Set the room reverb preset. Call ensureMasterGain first if needed. */
+  setRoomPreset(preset: RoomPreset): void {
+    if (Platform.OS !== 'web') return;
+    this.ensureMasterGain(); // ensure reverb engine is initialized
+    this.reverbEngine.setPreset(preset);
+  }
+
+  /** Set reverb wet/dry mix (0 = dry, 1 = fully wet). */
+  setRoomWetDry(value: number): void {
+    if (Platform.OS !== 'web') return;
+    this.reverbEngine.setWetDry(value);
+  }
+
+  /** Bypass reverb (go fully dry). */
+  bypassRoom(): void {
+    if (Platform.OS !== 'web') return;
+    this.reverbEngine.bypass();
   }
 
   private async loadAndPlay(params: AudioParams): Promise<void> {
@@ -117,8 +141,13 @@ export class ToneGenerator {
       this.masterGain = ctx.createGain();
       this.panner = ctx.createStereoPanner();
       this.panner.pan.value = 0;
+
+      // Insert reverb engine between panner and destination
+      // Chain: masterGain → panner → reverbInput → [dry+wet] → reverbOutput → destination
+      const { input: reverbIn, output: reverbOut } = this.reverbEngine.init(ctx);
       this.masterGain.connect(this.panner);
-      this.panner.connect(ctx.destination);
+      this.panner.connect(reverbIn);
+      reverbOut.connect(ctx.destination);
     }
     return this.masterGain;
   }
@@ -419,6 +448,8 @@ export class ToneGenerator {
       try { this.panner.disconnect(); } catch { /* */ }
       this.panner = null;
     }
+    this.reverbEngine.dispose();
+    this.reverbEngine = new RoomReverbEngine();
     this.webMode = null;
   }
 

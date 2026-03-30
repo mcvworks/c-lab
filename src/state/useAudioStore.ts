@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ToneGenerator } from '@/src/audio';
-import type { WaveformType, NoiseType, SourceMode, FrequencyScale } from '@/src/audio';
+import type { WaveformType, NoiseType, SourceMode, FrequencyScale, RoomPreset } from '@/src/audio';
 
 interface AudioState {
   // Shared audio parameters
@@ -17,6 +17,11 @@ interface AudioState {
   release: number; // envelope release in seconds (0–2)
   isPlaying: boolean;
 
+  // Room reverb
+  roomEnabled: boolean;
+  roomPreset: RoomPreset;
+  roomWetDry: number; // 0 = dry, 1 = fully wet
+
   // Actions
   setFrequency: (frequency: number) => void;
   setAmplitude: (amplitude: number) => void;
@@ -29,6 +34,9 @@ interface AudioState {
   setHarmonic: (index: number, value: number) => void;
   setAttack: (attack: number) => void;
   setRelease: (release: number) => void;
+  setRoomEnabled: (enabled: boolean) => void;
+  setRoomPreset: (preset: RoomPreset) => void;
+  setRoomWetDry: (value: number) => void;
   play: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -65,6 +73,9 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   attack: 0.05,
   release: 0.1,
   isPlaying: false,
+  roomEnabled: false,
+  roomPreset: 'cathedral' as RoomPreset,
+  roomWetDry: 0.3,
 
   setFrequency: (frequency) => {
     set({ frequency });
@@ -143,9 +154,43 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     set({ release });
   },
 
+  setRoomEnabled: (enabled) => {
+    set({ roomEnabled: enabled });
+    const s = get();
+    const gen = getGenerator();
+    if (enabled) {
+      gen.setRoomPreset(s.roomPreset);
+      gen.setRoomWetDry(s.roomWetDry);
+    } else {
+      gen.bypassRoom();
+    }
+  },
+
+  setRoomPreset: (preset) => {
+    set({ roomPreset: preset });
+    const s = get();
+    if (s.roomEnabled) {
+      getGenerator().setRoomPreset(preset);
+    }
+  },
+
+  setRoomWetDry: (value) => {
+    set({ roomWetDry: value });
+    const s = get();
+    if (s.roomEnabled) {
+      getGenerator().setRoomWetDry(value);
+    }
+  },
+
   play: async () => {
     const s = get();
-    await getGenerator().play(buildParams(s));
+    const gen = getGenerator();
+    await gen.play(buildParams(s));
+    // Apply room reverb after play ensures AudioContext is initialized
+    if (s.roomEnabled) {
+      gen.setRoomPreset(s.roomPreset);
+      gen.setRoomWetDry(s.roomWetDry);
+    }
     set({ isPlaying: true });
   },
 
@@ -172,6 +217,9 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       attack: 0.05,
       release: 0.1,
       isPlaying: false,
+      roomEnabled: false,
+      roomPreset: 'cathedral' as RoomPreset,
+      roomWetDry: 0.3,
     });
   },
 }));

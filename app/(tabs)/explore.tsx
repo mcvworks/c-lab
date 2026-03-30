@@ -17,11 +17,12 @@ import {
   SavePresetModal,
   PresetBar,
   SympatheticStringsView,
+  RoomVisualizer,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
-import type { NoiseType, SourceMode, WaveformType, FrequencyScale } from '@/src/audio';
-import { SympatheticStringsEngine } from '@/src/audio';
+import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
+import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -94,8 +95,10 @@ const EXPLORE_PRESETS: QuickPreset<ExploreQuickPreset>[] = [
 export default function ExploreScreen() {
   const {
     sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, isPlaying,
+    roomEnabled, roomPreset, roomWetDry,
     setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType,
     setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease,
+    setRoomEnabled, setRoomPreset, setRoomWetDry,
     play, stop, reset,
   } = useAudioStore();
 
@@ -107,11 +110,12 @@ export default function ExploreScreen() {
     const settings: ExploreSettings = {
       sourceMode, frequency, amplitude, waveform, noiseType,
       detune, pan, frequencyScale, harmonics, attack, release,
+      roomEnabled, roomPreset, roomWetDry,
     };
     await savePreset(name, 'explore', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Explore Preset'}" saved to Library.`);
-  }, [sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, savePreset]);
+  }, [sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, roomEnabled, roomPreset, roomWetDry, savePreset]);
 
   // Ensure presets are loaded
   const presetLoaded = usePresetStore((s) => s.loaded);
@@ -141,9 +145,12 @@ export default function ExploreScreen() {
       }
       setAttack(s.attack ?? 0.05);
       setRelease(s.release ?? 0.1);
+      setRoomEnabled(s.roomEnabled ?? false);
+      if (s.roomPreset) setRoomPreset(s.roomPreset);
+      if (s.roomWetDry != null) setRoomWetDry(s.roomWetDry);
       setPendingLoad(null);
     }
-  }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease]);
+  }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease, setRoomEnabled, setRoomPreset, setRoomWetDry]);
 
   const handleQuickPreset = useCallback((p: ExploreQuickPreset) => {
     setSourceMode(p.sourceMode);
@@ -157,7 +164,8 @@ export default function ExploreScreen() {
     for (let i = 0; i < 3; i++) setHarmonic(i, 0);
     setAttack(0.05);
     setRelease(0.1);
-  }, [setSourceMode, setWaveform, setNoiseType, setFrequency, setAmplitude, setDetune, setPan, setHarmonic, setAttack, setRelease]);
+    setRoomEnabled(false);
+  }, [setSourceMode, setWaveform, setNoiseType, setFrequency, setAmplitude, setDetune, setPan, setHarmonic, setAttack, setRelease, setRoomEnabled]);
 
   // Determine active quick preset index
   const activePresetIndex = EXPLORE_PRESETS.findIndex((p) => {
@@ -170,7 +178,8 @@ export default function ExploreScreen() {
       && detune === 0
       && pan === 0
       && harmonics[0] === 0 && harmonics[1] === 0 && harmonics[2] === 0
-      && attack === 0.05 && release === 0.1;
+      && attack === 0.05 && release === 0.1
+      && !roomEnabled;
   });
 
   const { contentWidth, vizHeight, isTablet } = useResponsive();
@@ -531,6 +540,56 @@ export default function ExploreScreen() {
           <Text style={styles.noiseHint}>
             Attack fades in on play. Release fades out on stop. Small values feel snappy; larger values create smooth transitions.
           </Text>
+        </Card>
+
+        {/* Room / Space Reverb */}
+        <SectionHeader title="SPACE" label />
+        <Card style={styles.card}>
+          <View style={styles.stringsHeaderRow}>
+            <Text style={styles.controlLabel}>Room Reverb</Text>
+            <PrimaryButton
+              title={roomEnabled ? 'ON' : 'OFF'}
+              variant={roomEnabled ? 'filled' : 'ghost'}
+              onPress={() => setRoomEnabled(!roomEnabled)}
+              style={styles.stringsToggle}
+            />
+          </View>
+
+          {roomEnabled && (
+            <>
+              <SegmentedControl
+                options={ROOM_PRESETS}
+                selected={roomPreset}
+                onSelect={setRoomPreset}
+                labels={ROOM_LABELS}
+              />
+
+              <RoomVisualizer
+                preset={roomPreset}
+                wetDry={roomWetDry}
+                isPlaying={isPlaying}
+              />
+
+              <PrimarySlider
+                label="Wet / Dry"
+                value={roomWetDry}
+                onValueChange={setRoomWetDry}
+                min={0}
+                max={1}
+                step={0.01}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                style={styles.slider}
+              />
+
+              <Text style={styles.noiseHint}>
+                {roomPreset === 'smallRoom' && 'Tight, warm reflections — like a bedroom or studio booth.'}
+                {roomPreset === 'cathedral' && 'Long, ethereal decay with rich harmonics — vast and immersive.'}
+                {roomPreset === 'cave' && 'Deep, dark reverberations with slow absorption — subterranean warmth.'}
+                {roomPreset === 'openAir' && 'Subtle early reflections with minimal decay — like an open field.'}
+                {roomPreset === 'box' && 'Bright, metallic resonance in a tight container — crisp and present.'}
+              </Text>
+            </>
+          )}
         </Card>
 
         {/* Sympathetic Strings — tone mode only */}

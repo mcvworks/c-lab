@@ -1,4 +1,4 @@
-import type { WaveformType, NoiseType, SourceMode, FrequencyScale } from '@/src/audio';
+import type { WaveformType, NoiseType, SourceMode, FrequencyScale, RoomPreset } from '@/src/audio';
 
 export interface ExploreSettings {
   sourceMode: SourceMode;
@@ -20,6 +20,9 @@ export interface ExploreSettings {
   sweepEnd?: number;
   sweepSpeed?: string;
   sweepLoop?: boolean;
+  roomEnabled?: boolean;
+  roomPreset?: RoomPreset;
+  roomWetDry?: number;
 }
 
 export interface AmbientLayerSettings {
