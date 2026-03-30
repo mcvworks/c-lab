@@ -19,6 +19,7 @@ import {
   SympatheticStringsView,
   RoomVisualizer,
   LissajousView,
+  SpectrogramView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
@@ -369,6 +370,24 @@ export default function ExploreScreen() {
             </View>
           </Card>
         </View>
+
+        {/* Spectrogram waterfall */}
+        <Card style={styles.vizCard} glowing={isPlaying}>
+          <View style={styles.vizHeader}>
+            <Text style={styles.vizTitle}>Spectrogram</Text>
+            <Text style={styles.vizBadge}>Waterfall</Text>
+          </View>
+          <View style={styles.vizContainer}>
+            <SpectrogramView
+              frequency={frequency}
+              amplitude={amplitude}
+              width={cardContentWidth}
+              height={vizHeight * 1.5}
+              isPlaying={isPlaying}
+              noiseType={sourceMode === 'noise' ? noiseType : null}
+            />
+          </View>
+        </Card>
 
         {/* Lissajous Figure */}
         <SectionHeader title="LISSAJOUS" label />

@@ -1,0 +1,19 @@
+# Handoff
+- Task: 036 — Spectrogram waterfall visualization
+- Status: done
+- Summary: Added a scrolling spectrogram (waterfall) visualization to the Explore screen. Shows frequency on X axis, time on Y axis (scrolling down), with color-mapped intensity using a black → blue → cyan → yellow → white palette. Fundamental frequency appears as a bright horizontal band, harmonics (2×, 3×, 4×) are visible as dimmer bands, and noise modes show characteristic broadband patterns.
+- Files Changed:
+  - `src/components/SpectrogramView.tsx` — new component (48 freq bins × 64 time rows, SVG Rect grid with setNativeProps for performance)
+  - `src/components/index.ts` — export SpectrogramView
+  - `app/(tabs)/explore.tsx` — add spectrogram card below waveform/spectrum
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open Explore tab
+  - Play a tone — spectrogram should scroll downward showing the fundamental as a bright band and harmonics as dimmer bands above it
+  - Change frequency — band positions should shift
+  - Switch to noise mode — should show broadband colored pattern (white=flat, pink=bass-heavy, brown=steep bass)
+  - Stop playback — scrolling stops
+- Blockers: None
+- Next Recommended Task: 037 (Drone Garden)
+- Notes: Uses simulated spectrum data (same pattern as SpectrumView) rather than a real AnalyserNode. The spectrogram is full-width below the waveform/spectrum pair, with 1.5× the standard viz height for better time resolution. 48×64 grid keeps SVG element count at ~3072, manageable for smooth animation.
