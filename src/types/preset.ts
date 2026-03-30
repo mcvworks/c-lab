@@ -12,6 +12,9 @@ export interface ExploreSettings {
   harmonics?: [number, number, number];
   attack?: number;
   release?: number;
+  dualFreq?: boolean;
+  frequency2?: number;
+  waveform2?: WaveformType;
 }
 
 export interface AmbientLayerSettings {

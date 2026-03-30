@@ -15,6 +15,9 @@ interface SandPlateViewProps {
   plateShape: PlateShape;
   particleStyle: ParticleStyle;
   waveform?: WaveformType;
+  /** Optional second frequency for dual-frequency interference mode */
+  frequency2?: number;
+  waveform2?: WaveformType;
   isPlaying?: boolean;
   isFrozen?: boolean;
   style?: ViewStyle;
@@ -235,6 +238,8 @@ export default function SandPlateView({
   plateShape,
   particleStyle,
   waveform = 'sine',
+  frequency2,
+  waveform2 = 'sine',
   isPlaying = false,
   isFrozen = false,
   style,
@@ -244,8 +249,8 @@ export default function SandPlateView({
   const lastTimeRef = useRef<number | null>(null);
   const particlesRef = useRef<Particle[]>(initParticles(PARTICLE_COUNT, plateShape));
 
-  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, waveform, isPlaying, isFrozen });
-  propsRef.current = { frequency, amplitude, plateShape, particleStyle, waveform, isPlaying, isFrozen };
+  const propsRef = useRef({ frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, isPlaying, isFrozen });
+  propsRef.current = { frequency, amplitude, plateShape, particleStyle, waveform, frequency2, waveform2, isPlaying, isFrozen };
 
   /** Accumulated simulation time for time-varying jitter */
   const simTimeRef = useRef(0);
@@ -267,7 +272,7 @@ export default function SandPlateView({
   }, [plateShape, size]);
 
   const simulateStep = useCallback((dt: number) => {
-    const { frequency: freq, amplitude: amp, plateShape: shape, particleStyle: ps, waveform: wf, isFrozen: frozen } = propsRef.current;
+    const { frequency: freq, amplitude: amp, plateShape: shape, particleStyle: ps, waveform: wf, frequency2: freq2, waveform2: wf2, isFrozen: frozen } = propsRef.current;
     if (frozen) return;
 
     simTimeRef.current += dt;
@@ -284,7 +289,14 @@ export default function SandPlateView({
       const p = particles[i];
 
       // Compute gradient — particles move toward nodal lines (lower |field|)
+      // Primary field gradient
       const grad = fieldGradient(p.x, p.y, freq, wf);
+      // Blend second frequency field if dual mode is active
+      if (freq2 != null) {
+        const grad2 = fieldGradient(p.x, p.y, freq2, wf2);
+        grad.gx = (grad.gx + grad2.gx) * 0.5;
+        grad.gy = (grad.gy + grad2.gy) * 0.5;
+      }
       const ax = -grad.gx * attractStrength;
       const ay = -grad.gy * attractStrength;
 
@@ -361,15 +373,17 @@ export default function SandPlateView({
     if (!isPlaying) {
       render();
     }
-  }, [frequency, amplitude, particleStyle, waveform, isPlaying, render]);
+  }, [frequency, amplitude, particleStyle, waveform, frequency2, waveform2, isPlaying, render]);
 
   // Scatter particles when frequency changes significantly or waveform changes while playing
   const prevFreqRef = useRef(frequency);
   const prevWaveformRef = useRef(waveform);
+  const prevFreq2Ref = useRef(frequency2);
   useEffect(() => {
     const freqChanged = Math.abs(frequency - prevFreqRef.current) > 30;
     const waveformChanged = waveform !== prevWaveformRef.current;
-    if (isPlaying && (freqChanged || waveformChanged)) {
+    const freq2Changed = frequency2 != null && (prevFreq2Ref.current == null || Math.abs(frequency2 - prevFreq2Ref.current) > 30);
+    if (isPlaying && (freqChanged || waveformChanged || freq2Changed)) {
       for (const p of particlesRef.current) {
         p.vx += (Math.random() - 0.5) * 0.8;
         p.vy += (Math.random() - 0.5) * 0.8;
@@ -377,7 +391,8 @@ export default function SandPlateView({
     }
     prevFreqRef.current = frequency;
     prevWaveformRef.current = waveform;
-  }, [frequency, waveform, isPlaying]);
+    prevFreq2Ref.current = frequency2;
+  }, [frequency, waveform, frequency2, isPlaying]);
 
   const pColor = PARTICLE_COLORS[particleStyle];
 
