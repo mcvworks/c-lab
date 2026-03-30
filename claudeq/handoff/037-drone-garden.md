@@ -1,0 +1,23 @@
+# Handoff
+- Task: 037 — Drone garden freeform sound canvas
+- Status: done
+- Summary: Added a new "Garden" tab with a freeform tap-to-place drone canvas. Tapping places tone seeds that play continuously — Y position maps to pitch (60–800 Hz, log scale), X maps to stereo pan. Seeds visualize as colored circles (amber=low, cyan=mid, violet=high). Long-press removes with fade-out. Max 10 seeds. Master volume slider.
+- Files Changed:
+  - `src/audio/DroneGardenEngine.ts` — new engine managing multiple independent oscillators with per-seed gain/panner
+  - `app/(tabs)/garden.tsx` — new Drone Garden screen with canvas, seed placement, long-press removal
+  - `app/(tabs)/_layout.tsx` — added Garden tab between Composer and Library
+  - `src/audio/index.ts` — export DroneGardenEngine
+- Commands Run:
+  - `npx tsc --noEmit` — clean
+- Testing:
+  - Open the Garden tab
+  - Tap the canvas to place tone seeds — hear continuous tones
+  - Tap at different heights to get different pitches
+  - Tap left/right to hear stereo panning
+  - Long-press a seed to remove it (fades out)
+  - Place up to 10 seeds — alert when full
+  - Use Clear All to remove everything
+  - Adjust master volume slider
+- Blockers: None
+- Next Recommended Task: 038 (Interval Explorer)
+- Notes: Engine uses Web Audio API only (web platform). Each seed gets its own OscillatorNode → GainNode → StereoPannerNode → master. Fade-in/out is 400ms for smooth transitions. Seeds randomly get sine or triangle waveform for variety. Drag-to-move could be added later with PanGestureHandler.

@@ -6,6 +6,7 @@ const TAB_ICONS: Record<string, string> = {
   explore: '♫',
   cymatics: '◎',
   composer: '♬',
+  garden: '❋',
   library: '▤',
   settings: '⚙',
 };
@@ -59,6 +60,13 @@ export default function TabLayout() {
         options={{
           title: 'Composer',
           tabBarIcon: ({ color }) => <TabIcon name="composer" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="garden"
+        options={{
+          title: 'Garden',
+          tabBarIcon: ({ color }) => <TabIcon name="garden" color={color} />,
         }}
       />
       <Tabs.Screen

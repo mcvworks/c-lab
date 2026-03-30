@@ -18,3 +18,5 @@ export { SympatheticStringsEngine } from './SympatheticStringsEngine';
 export type { StringState } from './SympatheticStringsEngine';
 export { RoomReverbEngine, ROOM_CONFIGS, ROOM_PRESETS, ROOM_LABELS } from './RoomReverbEngine';
 export type { RoomPreset } from './RoomReverbEngine';
+export { DroneGardenEngine } from './DroneGardenEngine';
+export type { Seed as DroneGardenSeed } from './DroneGardenEngine';
