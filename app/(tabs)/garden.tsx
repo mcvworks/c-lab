@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, GestureResponderEvent, LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, SectionHeader, PrimarySlider } from '@/src/components';
 import { DroneGardenEngine } from '@/src/audio/DroneGardenEngine';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -53,7 +53,6 @@ export default function DroneGardenScreen() {
   const [masterVol, setMasterVol] = useState(0.6);
   const [canvasLayout, setCanvasLayout] = useState({ width: 0, height: 0 });
   const canvasRef = useRef<View>(null);
-  const canvasPageOffset = useRef({ x: 0, y: 0 });
   const { contentWidth } = useResponsive();
 
   const getEngine = useCallback(() => {
@@ -76,16 +75,36 @@ export default function DroneGardenScreen() {
   }, [masterVol, getEngine]);
 
   const handleCanvasTap = useCallback(async (e: GestureResponderEvent) => {
-    const { pageX, pageY, locationX, locationY } = e.nativeEvent;
     const { width, height } = canvasLayout;
     if (width <= 0 || height <= 0) return;
 
-    // locationX/Y can be undefined on web — fall back to pageX/Y minus canvas offset
-    let lx = locationX;
-    let ly = locationY;
+    // On web, locationX/Y is often relative to the target element which may be
+    // a child — use the raw DOM event's offsetX/Y on currentTarget, or fall back
+    // to clientX/Y minus the canvas bounding rect.
+    let lx: number | undefined;
+    let ly: number | undefined;
+    const rawEvt = (e as any)._dispatchInstances ? undefined : (e.nativeEvent as any);
+
+    // Try getBoundingClientRect on the canvas DOM node (most reliable on web)
+    if (canvasRef.current) {
+      try {
+        const domNode = (canvasRef.current as any) as HTMLElement;
+        if (domNode && typeof domNode.getBoundingClientRect === 'function') {
+          const rect = domNode.getBoundingClientRect();
+          const cx = rawEvt?.clientX ?? rawEvt?.pageX;
+          const cy = rawEvt?.clientY ?? rawEvt?.pageY;
+          if (cx != null && cy != null && isFinite(cx) && isFinite(cy)) {
+            lx = cx - rect.left;
+            ly = cy - rect.top;
+          }
+        }
+      } catch { /* not on web */ }
+    }
+
+    // Fallback to nativeEvent locationX/Y
     if (lx == null || ly == null || !isFinite(lx) || !isFinite(ly)) {
-      lx = (pageX ?? 0) - canvasPageOffset.current.x;
-      ly = (pageY ?? 0) - canvasPageOffset.current.y;
+      lx = e.nativeEvent.locationX ?? 0;
+      ly = e.nativeEvent.locationY ?? 0;
     }
 
     const xFrac = Math.max(0, Math.min(1, lx / width));
@@ -138,10 +157,6 @@ export default function DroneGardenScreen() {
         onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;
           setCanvasLayout({ width, height });
-          // Measure page offset for web fallback
-          canvasRef.current?.measureInWindow?.((x, y) => {
-            canvasPageOffset.current = { x: x ?? 0, y: y ?? 0 };
-          });
         }}
       >
         {/* Tap area */}
