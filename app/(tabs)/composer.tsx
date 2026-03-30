@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BinauralGenerator, AmbientGenerator, renderSession } from '@/src/audio';
-import type { AmbientLayerConfig, ExportProgress } from '@/src/audio';
+import type { AmbientLayerConfig, ExportProgress, CarrierWaveform } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -15,8 +15,18 @@ import {
   PrimarySlider,
   SegmentedControl,
   SavePresetModal,
+  PresetBar,
 } from '@/src/components';
+import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
+
+// ── Carrier waveform options ──────────────────────────────────────
+const CARRIER_WAVEFORMS: CarrierWaveform[] = ['sine', 'triangle', 'square'];
+const CARRIER_LABELS: Record<CarrierWaveform, string> = {
+  sine: 'Sine',
+  triangle: 'Triangle',
+  square: 'Square',
+};
 
 // ── Binaural brainwave presets ──────────────────────────────────────
 
@@ -64,6 +74,76 @@ interface AmbientLayer {
   enabled: boolean;
 }
 
+// ── Quick presets (mood-based) ─────────────────────────────────────────
+interface ComposerQuickPreset {
+  baseFrequency: number;
+  beatDifference: number;
+  binauralVolume: number;
+  carrierWaveform?: CarrierWaveform;
+  stereoWidth?: number;
+  layers: { type: AmbientType; volume: number; enabled: boolean }[];
+  duration: number;
+  fadeIn: number;
+  fadeOut: number;
+}
+
+const COMPOSER_PRESETS: QuickPreset<ComposerQuickPreset>[] = [
+  {
+    label: 'Deep Sleep',
+    settings: {
+      baseFrequency: 100, beatDifference: 2, binauralVolume: 0.45,
+      layers: [{ type: 'rain', volume: 0.4, enabled: true }],
+      duration: 30, fadeIn: 10, fadeOut: 10,
+    },
+  },
+  {
+    label: 'Meditation',
+    settings: {
+      baseFrequency: 150, beatDifference: 6, binauralVolume: 0.5,
+      layers: [
+        { type: 'ocean', volume: 0.35, enabled: true },
+        { type: 'forest', volume: 0.25, enabled: true },
+      ],
+      duration: 15, fadeIn: 5, fadeOut: 5,
+    },
+  },
+  {
+    label: 'Focus',
+    settings: {
+      baseFrequency: 200, beatDifference: 20, binauralVolume: 0.4,
+      layers: [{ type: 'rain', volume: 0.2, enabled: true }],
+      duration: 30, fadeIn: 5, fadeOut: 5,
+    },
+  },
+  {
+    label: 'Calm',
+    settings: {
+      baseFrequency: 180, beatDifference: 10, binauralVolume: 0.5,
+      layers: [{ type: 'wind', volume: 0.3, enabled: true }],
+      duration: 15, fadeIn: 5, fadeOut: 5,
+    },
+  },
+  {
+    label: 'Fireside',
+    settings: {
+      baseFrequency: 120, beatDifference: 6, binauralVolume: 0.45,
+      layers: [
+        { type: 'fire', volume: 0.4, enabled: true },
+        { type: 'rain', volume: 0.2, enabled: true },
+      ],
+      duration: 30, fadeIn: 10, fadeOut: 10,
+    },
+  },
+  {
+    label: 'Ocean Drift',
+    settings: {
+      baseFrequency: 140, beatDifference: 4, binauralVolume: 0.5,
+      layers: [{ type: 'ocean', volume: 0.5, enabled: true }],
+      duration: 60, fadeIn: 10, fadeOut: 30,
+    },
+  },
+];
+
 let nextLayerId = 1;
 
 export default function ComposerScreen() {
@@ -92,6 +172,8 @@ export default function ComposerScreen() {
   const [baseFrequency, setBaseFrequency] = useState(200);
   const [beatDifference, setBeatDifference] = useState(10);
   const [binauralVolume, setBinauralVolume] = useState(0.5);
+  const [carrierWaveform, setCarrierWaveform] = useState<CarrierWaveform>('sine');
+  const [stereoWidth, setStereoWidth] = useState(1);
 
   // Ambient layers
   const [layers, setLayers] = useState<AmbientLayer[]>([
@@ -117,6 +199,8 @@ export default function ComposerScreen() {
       baseFrequency,
       beatDifference,
       binauralVolume,
+      carrierWaveform,
+      stereoWidth,
       layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
       duration,
       fadeIn,
@@ -162,13 +246,15 @@ export default function ComposerScreen() {
       setExporting(false);
       Alert.alert('Export Failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [baseFrequency, beatDifference, binauralVolume, layers, duration, fadeIn, fadeOut, addExport]);
+  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, duration, fadeIn, fadeOut, addExport]);
 
   const handleSavePreset = useCallback(async (name: string) => {
     const settings: ComposerSettings = {
       baseFrequency,
       beatDifference,
       binauralVolume,
+      carrierWaveform,
+      stereoWidth,
       layers: layers.map(({ type, volume, enabled }) => ({ type, volume, enabled })),
       duration,
       fadeIn,
@@ -177,7 +263,7 @@ export default function ComposerScreen() {
     await savePreset(name, 'composer', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Composer Preset'}" saved to Library.`);
-  }, [baseFrequency, beatDifference, binauralVolume, layers, duration, fadeIn, fadeOut, savePreset]);
+  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, duration, fadeIn, fadeOut, savePreset]);
 
   // Load preset from Library
   const pendingLoad = usePresetStore((s) => s.pendingLoad);
@@ -188,6 +274,8 @@ export default function ComposerScreen() {
       setBaseFrequency(s.baseFrequency);
       setBeatDifference(s.beatDifference);
       setBinauralVolume(s.binauralVolume);
+      setCarrierWaveform(s.carrierWaveform ?? 'sine');
+      setStereoWidth(s.stereoWidth ?? 1);
       setLayers(s.layers.map((l, i) => ({ ...l, id: nextLayerId++ })));
       setDuration(s.duration);
       setFadeIn(s.fadeIn);
@@ -268,16 +356,36 @@ export default function ComposerScreen() {
 
   // Live-update binaural params while playing
   const updateBinauralIfPlaying = useCallback(
-    (base: number, diff: number, vol: number) => {
+    (base: number, diff: number, vol: number, waveform?: CarrierWaveform, width?: number) => {
       if (!generatorRef.current?.isPlaying()) return;
       generatorRef.current.updateParams({
         leftFreq: base,
         rightFreq: base + diff,
         amplitude: vol,
+        carrierWaveform: waveform ?? carrierWaveform,
+        stereoWidth: width ?? stereoWidth,
       });
     },
-    [],
+    [carrierWaveform, stereoWidth],
   );
+
+  const handleQuickPreset = useCallback((p: ComposerQuickPreset) => {
+    setBaseFrequency(p.baseFrequency);
+    setBeatDifference(p.beatDifference);
+    setBinauralVolume(p.binauralVolume);
+    setCarrierWaveform(p.carrierWaveform ?? 'sine');
+    setStereoWidth(p.stereoWidth ?? 1);
+    setLayers(p.layers.map((l) => ({ ...l, id: nextLayerId++ })));
+    setDuration(p.duration);
+    setFadeIn(p.fadeIn);
+    setFadeOut(p.fadeOut);
+    updateBinauralIfPlaying(p.baseFrequency, p.beatDifference, p.binauralVolume, p.carrierWaveform ?? 'sine', p.stereoWidth ?? 1);
+    if (ambientRef.current?.isPlaying()) {
+      ambientRef.current.syncLayers(
+        p.layers.map((l, i) => ({ ...l, id: i })) as AmbientLayerConfig[],
+      );
+    }
+  }, [updateBinauralIfPlaying]);
 
   const handleBaseFrequency = useCallback(
     (v: number) => {
@@ -303,6 +411,22 @@ export default function ComposerScreen() {
     [baseFrequency, beatDifference, updateBinauralIfPlaying],
   );
 
+  const handleCarrierWaveform = useCallback(
+    (wf: CarrierWaveform) => {
+      setCarrierWaveform(wf);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, wf);
+    },
+    [baseFrequency, beatDifference, binauralVolume, updateBinauralIfPlaying],
+  );
+
+  const handleStereoWidth = useCallback(
+    (v: number) => {
+      setStereoWidth(v);
+      updateBinauralIfPlaying(baseFrequency, beatDifference, binauralVolume, undefined, v);
+    },
+    [baseFrequency, beatDifference, binauralVolume, updateBinauralIfPlaying],
+  );
+
   const handleBrainwavePreset = useCallback(
     (preset: BrainwavePreset) => {
       const diff = BRAINWAVE_RANGES[preset].diff;
@@ -325,17 +449,24 @@ export default function ComposerScreen() {
           leftFreq: baseFrequency,
           rightFreq: baseFrequency + beatDifference,
           amplitude: binauralVolume,
+          carrierWaveform,
+          stereoWidth,
         }),
         ambient.start(layers as AmbientLayerConfig[]),
       ]);
       setIsPlaying(true);
     }
-  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, layers, getGenerator, getAmbient]);
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, layers, getGenerator, getAmbient]);
 
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <SectionHeader title="Composer" subtitle="Binaural beats & ambient layers" />
+
+        <PresetBar
+          presets={COMPOSER_PRESETS}
+          onSelect={handleQuickPreset}
+        />
 
         {/* ── Binaural Beat Section ──────────────────────────────── */}
         <Card style={styles.card}>
@@ -406,6 +537,28 @@ export default function ComposerScreen() {
             formatValue={(v) => `${Math.round(v * 100)}%`}
             style={styles.slider}
           />
+
+          <Text style={[styles.controlLabel, styles.labelSpacing]}>Carrier Waveform</Text>
+          <SegmentedControl
+            options={CARRIER_WAVEFORMS}
+            selected={carrierWaveform}
+            onSelect={handleCarrierWaveform}
+            labels={CARRIER_LABELS}
+          />
+
+          <PrimarySlider
+            label="Stereo Width"
+            value={stereoWidth}
+            onValueChange={handleStereoWidth}
+            min={0}
+            max={1}
+            step={0.01}
+            formatValue={(v) => `${Math.round(v * 100)}%`}
+            style={styles.slider}
+          />
+          <Text style={styles.hint}>
+            {stereoWidth < 0.1 ? 'Mono — no binaural separation' : stereoWidth > 0.9 ? 'Full stereo — maximum binaural effect' : 'Partial stereo separation'}
+          </Text>
         </Card>
 
         {/* ── Ambient Layers Section ─────────────────────────────── */}

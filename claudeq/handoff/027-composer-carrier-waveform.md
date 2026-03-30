@@ -1,0 +1,21 @@
+# Handoff
+- Task: 027 — Composer: carrier waveform and stereo width
+- Status: done
+- Summary: Added carrier waveform selector (sine/triangle/square) and stereo width slider (0–100%) to the Composer binaural beat section. Waveform changes the OscillatorNode type for both L/R oscillators. Stereo width crossfades between full separation (100% = binaural effect) and mono mix (0% = no binaural separation) using cross-channel gain nodes.
+- Files Changed:
+  - `src/types/preset.ts` — Added `CarrierWaveform` type, optional `carrierWaveform` and `stereoWidth` fields to `ComposerSettings`
+  - `src/audio/BinauralGenerator.ts` — Added `CarrierWaveform` type and optional fields to `BinauralParams`. Updated web audio graph with cross-channel gain nodes for stereo width. Waveform and width update via smooth ramps.
+  - `src/audio/index.ts` — Exported `CarrierWaveform` type
+  - `src/audio/exportEngine.ts` — Added `carrierSample()` helper for triangle/square waveform generation. Updated offline render to use carrier waveform and stereo width crossfade.
+  - `app/(tabs)/composer.tsx` — Added carrier waveform SegmentedControl and stereo width PrimarySlider in the Binaural Beat card. Wired into play, update, save, load, export, and quick preset flows.
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Composer tab
+  - **Carrier waveform**: Select Triangle or Square — the binaural tone should sound audibly different (brighter/buzzier). Switch back to Sine — smooth classic tone.
+  - **Stereo width**: Drag to 0% — both ears hear the same mixed tone (no binaural beat). Drag to 100% — full L/R separation (maximum binaural effect). Mid-values give partial separation.
+  - Start a session, change waveform/width while playing — changes apply smoothly without clicks.
+  - Save a preset with Triangle + 50% width, reload from Library — settings persist.
+  - Export WAV — the exported file should reflect the selected waveform and width.
+- Blockers: None
+- Next Recommended Task: 028 (composer isochronal mode)
+- Notes: Stereo width is implemented via cross-channel gain nodes (leftToRight, rightToLeft) that bleed each oscillator into the opposite channel. At width=0 crossGain=1 so both channels hear both tones equally (mono). At width=1 crossGain=0 so each channel hears only its own oscillator (full binaural). All new fields are optional with sensible defaults for backward compatibility with existing presets.

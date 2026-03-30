@@ -2,10 +2,22 @@ import { Platform } from 'react-native';
 import { generateBinauralSamples } from './generateBinauralSamples';
 import { encodeWavStereoBase64 } from './encodeWavStereo';
 
+/** Cancel any scheduled automation, anchor at the current value, then ramp. */
+function smoothRamp(param: AudioParam, target: number, now: number, duration = 0.03): void {
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(param.value, now);
+  param.linearRampToValueAtTime(target, now + duration);
+}
+
+export type CarrierWaveform = 'sine' | 'triangle' | 'square';
+
 export interface BinauralParams {
   leftFreq: number;
   rightFreq: number;
   amplitude: number;
+  carrierWaveform?: CarrierWaveform;
+  /** 0 = mono (no binaural separation), 1 = full stereo separation (default) */
+  stereoWidth?: number;
 }
 
 /**
@@ -29,6 +41,9 @@ export class BinauralGenerator {
   private rightGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
   private merger: ChannelMergerNode | null = null;
+  // Stereo width crossfade gains
+  private leftToRight: GainNode | null = null;
+  private rightToLeft: GainNode | null = null;
 
   // Native state
   private nativeSound: any = null;
@@ -98,6 +113,12 @@ export class BinauralGenerator {
     this.teardownWebGraph();
 
     const now = ctx.currentTime;
+    const waveform = params.carrierWaveform ?? 'sine';
+    const oscType = waveform === 'square' ? 'square' : waveform;
+    const width = params.stereoWidth ?? 1;
+    // crossGain: how much of each osc bleeds into the opposite channel
+    // At width=1: cross=0 (full separation). At width=0: cross=1 (mono).
+    const crossGain = 1 - width;
 
     // Create channel merger: input 0 → left speaker, input 1 → right speaker
     this.merger = ctx.createChannelMerger(2);
@@ -108,23 +129,33 @@ export class BinauralGenerator {
     this.merger.connect(this.masterGain);
     this.masterGain.connect(ctx.destination);
 
-    // Left oscillator → left channel only
+    // Left oscillator → left channel (direct) + right channel (cross)
     this.leftOsc = ctx.createOscillator();
-    this.leftOsc.type = 'sine';
+    this.leftOsc.type = oscType;
     this.leftOsc.frequency.setValueAtTime(params.leftFreq, now);
     this.leftGain = ctx.createGain();
     this.leftGain.gain.setValueAtTime(1.0, now);
     this.leftOsc.connect(this.leftGain);
     this.leftGain.connect(this.merger, 0, 0); // → left channel
 
-    // Right oscillator → right channel only
+    this.leftToRight = ctx.createGain();
+    this.leftToRight.gain.setValueAtTime(crossGain, now);
+    this.leftOsc.connect(this.leftToRight);
+    this.leftToRight.connect(this.merger, 0, 1); // left osc → right channel
+
+    // Right oscillator → right channel (direct) + left channel (cross)
     this.rightOsc = ctx.createOscillator();
-    this.rightOsc.type = 'sine';
+    this.rightOsc.type = oscType;
     this.rightOsc.frequency.setValueAtTime(params.rightFreq, now);
     this.rightGain = ctx.createGain();
     this.rightGain.gain.setValueAtTime(1.0, now);
     this.rightOsc.connect(this.rightGain);
     this.rightGain.connect(this.merger, 0, 1); // → right channel
+
+    this.rightToLeft = ctx.createGain();
+    this.rightToLeft.gain.setValueAtTime(crossGain, now);
+    this.rightOsc.connect(this.rightToLeft);
+    this.rightToLeft.connect(this.merger, 0, 0); // right osc → left channel
 
     this.leftOsc.start(now);
     this.rightOsc.start(now);
@@ -136,9 +167,22 @@ export class BinauralGenerator {
     const now = this.audioCtx.currentTime;
     const rampTime = 0.03; // 30ms ramp prevents clicks
 
-    this.leftOsc.frequency.linearRampToValueAtTime(params.leftFreq, now + rampTime);
-    this.rightOsc.frequency.linearRampToValueAtTime(params.rightFreq, now + rampTime);
-    this.masterGain.gain.linearRampToValueAtTime(params.amplitude, now + rampTime);
+    smoothRamp(this.leftOsc.frequency, params.leftFreq, now, rampTime);
+    smoothRamp(this.rightOsc.frequency, params.rightFreq, now, rampTime);
+    smoothRamp(this.masterGain.gain, params.amplitude, now, rampTime);
+
+    // Update carrier waveform (instant switch — no ramp needed)
+    const waveform = params.carrierWaveform ?? 'sine';
+    const oscType = waveform === 'square' ? 'square' : waveform;
+    if (this.leftOsc.type !== oscType) {
+      this.leftOsc.type = oscType;
+      this.rightOsc.type = oscType;
+    }
+
+    // Update stereo width crossfade
+    const crossGain = 1 - (params.stereoWidth ?? 1);
+    if (this.leftToRight) smoothRamp(this.leftToRight.gain, crossGain, now, rampTime);
+    if (this.rightToLeft) smoothRamp(this.rightToLeft.gain, crossGain, now, rampTime);
   }
 
   private teardownWebGraph(): void {
@@ -158,6 +202,14 @@ export class BinauralGenerator {
       try { this.rightGain.disconnect(); } catch { /* */ }
       this.rightGain = null;
     }
+    if (this.leftToRight) {
+      try { this.leftToRight.disconnect(); } catch { /* */ }
+      this.leftToRight = null;
+    }
+    if (this.rightToLeft) {
+      try { this.rightToLeft.disconnect(); } catch { /* */ }
+      this.rightToLeft = null;
+    }
     if (this.merger) {
       try { this.merger.disconnect(); } catch { /* */ }
       this.merger = null;
@@ -172,7 +224,7 @@ export class BinauralGenerator {
     // Fade out over ~60ms to avoid click
     if (this.masterGain && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.06);
+      smoothRamp(this.masterGain.gain, 0, now, 0.06);
       await new Promise((r) => setTimeout(r, 80));
     }
     this.teardownWebGraph();
@@ -247,6 +299,8 @@ function paramsEqual(a: BinauralParams, b: BinauralParams): boolean {
   return (
     a.leftFreq === b.leftFreq &&
     a.rightFreq === b.rightFreq &&
-    Math.abs(a.amplitude - b.amplitude) < 0.005
+    Math.abs(a.amplitude - b.amplitude) < 0.005 &&
+    (a.carrierWaveform ?? 'sine') === (b.carrierWaveform ?? 'sine') &&
+    Math.abs((a.stereoWidth ?? 1) - (b.stereoWidth ?? 1)) < 0.005
   );
 }

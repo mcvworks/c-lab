@@ -28,10 +28,14 @@ export interface AmbientLayerSettings {
   enabled: boolean;
 }
 
+export type CarrierWaveform = 'sine' | 'triangle' | 'square';
+
 export interface ComposerSettings {
   baseFrequency: number;
   beatDifference: number;
   binauralVolume: number;
+  carrierWaveform?: CarrierWaveform;
+  stereoWidth?: number;
   layers: AmbientLayerSettings[];
   duration: number;
   fadeIn: number;

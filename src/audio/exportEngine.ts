@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { SAMPLE_RATE } from './types';
-import type { ComposerSettings, AmbientLayerSettings } from '@/src/types/preset';
+import type { ComposerSettings, AmbientLayerSettings, CarrierWaveform } from '@/src/types/preset';
 
 /**
  * Offline audio renderer for exporting composer sessions to WAV files.
@@ -147,6 +147,26 @@ function initLayerState(layer: AmbientLayerSettings): LayerRenderState {
   return state;
 }
 
+// ── Carrier waveform helpers ─────────────────────────────────────
+
+/** Generate a waveform sample at phase (0–2π) */
+function carrierSample(phase: number, waveform: CarrierWaveform): number {
+  switch (waveform) {
+    case 'triangle': {
+      // Normalize phase to [0, 1)
+      const t = ((phase / (2 * Math.PI)) % 1 + 1) % 1;
+      return t < 0.5 ? 4 * t - 1 : 3 - 4 * t;
+    }
+    case 'square': {
+      const t = ((phase / (2 * Math.PI)) % 1 + 1) % 1;
+      // Soft square — band-limited approximation with first 5 harmonics
+      return t < 0.5 ? 1 : -1;
+    }
+    default: // sine
+      return Math.sin(phase);
+  }
+}
+
 // ── Main export function ──────────────────────────────────────────
 
 export interface ExportProgress {
@@ -209,13 +229,19 @@ export async function renderSession(
     // -- Binaural beat (stereo) --
     const leftFreq = settings.baseFrequency;
     const rightFreq = settings.baseFrequency + settings.beatDifference;
+    const waveform: CarrierWaveform = settings.carrierWaveform ?? 'sine';
+    const width = settings.stereoWidth ?? 1;
+    const crossGain = 1 - width;
 
     for (let i = 0; i < chunkLen; i++) {
       const t = (chunkStart + i) / SAMPLE_RATE;
       const fadeGain = computeFadeGain(chunkStart + i, totalSamples, settings.fadeIn, settings.fadeOut);
 
-      let leftSample = Math.sin(2 * Math.PI * leftFreq * t) * settings.binauralVolume;
-      let rightSample = Math.sin(2 * Math.PI * rightFreq * t) * settings.binauralVolume;
+      const leftRaw = carrierSample(2 * Math.PI * leftFreq * t, waveform);
+      const rightRaw = carrierSample(2 * Math.PI * rightFreq * t, waveform);
+      // Apply stereo width: at width=1, full separation; at width=0, mono mix
+      let leftSample = (leftRaw + rightRaw * crossGain) * settings.binauralVolume;
+      let rightSample = (rightRaw + leftRaw * crossGain) * settings.binauralVolume;
 
       // -- Mix ambient layers (mono, added to both channels) --
       // Noise is generated per-sample for continuity

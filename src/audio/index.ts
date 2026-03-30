@@ -1,6 +1,6 @@
 export { ToneGenerator } from './ToneGenerator';
 export { BinauralGenerator } from './BinauralGenerator';
-export type { BinauralParams } from './BinauralGenerator';
+export type { BinauralParams, CarrierWaveform } from './BinauralGenerator';
 export { AmbientGenerator } from './AmbientGenerator';
 export type { AmbientType, AmbientLayerConfig } from './AmbientGenerator';
 export { generateSamples } from './generateSamples';
