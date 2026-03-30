@@ -60,6 +60,49 @@ const OSC_TYPE: Record<WaveformType, OscillatorType> = {
   triangle: 'triangle',
 };
 
+// ── Musical intervals ────────────────────────────────────────────────
+const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'] as const;
+
+/** Concert pitch frequencies for octave 3 (middle range, good for cymatics) */
+function noteFrequency(noteIndex: number, octave: number = 3): number {
+  // A4 = 440 Hz. noteIndex 9 = A, octave 4 => 440
+  const semitonesFromA4 = (octave - 4) * 12 + (noteIndex - 9);
+  return Math.round(440 * Math.pow(2, semitonesFromA4 / 12));
+}
+
+interface MusicalInterval {
+  name: string;
+  shortName: string;
+  ratio: string;
+  semitones: number;
+  consonance: 'perfect' | 'consonant' | 'dissonant';
+}
+
+const INTERVALS: MusicalInterval[] = [
+  { name: 'Unison',       shortName: 'P1',  ratio: '1:1',   semitones: 0,  consonance: 'perfect' },
+  { name: 'Minor 2nd',    shortName: 'm2',  ratio: '16:15', semitones: 1,  consonance: 'dissonant' },
+  { name: 'Major 2nd',    shortName: 'M2',  ratio: '9:8',   semitones: 2,  consonance: 'dissonant' },
+  { name: 'Minor 3rd',    shortName: 'm3',  ratio: '6:5',   semitones: 3,  consonance: 'consonant' },
+  { name: 'Major 3rd',    shortName: 'M3',  ratio: '5:4',   semitones: 4,  consonance: 'consonant' },
+  { name: 'Perfect 4th',  shortName: 'P4',  ratio: '4:3',   semitones: 5,  consonance: 'perfect' },
+  { name: 'Tritone',      shortName: 'TT',  ratio: '45:32', semitones: 6,  consonance: 'dissonant' },
+  { name: 'Perfect 5th',  shortName: 'P5',  ratio: '3:2',   semitones: 7,  consonance: 'perfect' },
+  { name: 'Minor 6th',    shortName: 'm6',  ratio: '8:5',   semitones: 8,  consonance: 'consonant' },
+  { name: 'Major 6th',    shortName: 'M6',  ratio: '5:3',   semitones: 9,  consonance: 'consonant' },
+  { name: 'Minor 7th',    shortName: 'm7',  ratio: '16:9',  semitones: 10, consonance: 'dissonant' },
+  { name: 'Octave',       shortName: 'P8',  ratio: '2:1',   semitones: 12, consonance: 'perfect' },
+];
+
+const CONSONANCE_COLORS: Record<string, string> = {
+  perfect: '#4CAF50',
+  consonant: '#64B5F6',
+  dissonant: '#FF8A65',
+};
+
+const INTERVAL_HINT =
+  'Consonant intervals (green/blue) produce orderly, symmetric patterns — their frequencies share simple ratios. ' +
+  'Dissonant intervals (orange) create complex, chaotic patterns because their frequency ratios are more complex.';
+
 const SWEEP_SPEEDS = ['slow', 'medium', 'fast'] as const;
 type SweepSpeed = (typeof SWEEP_SPEEDS)[number];
 const SWEEP_SPEED_LABELS: Record<SweepSpeed, string> = { slow: 'Slow', medium: 'Med', fast: 'Fast' };
@@ -85,6 +128,8 @@ const CYMATICS_PRESETS: QuickPreset<CymaticsQuickPreset>[] = [
   { label: 'Interference', settings: { frequency: 440, amplitude: 0.65, waveform: 'sine', dualFreq: true, frequency2: 660, waveform2: 'sine', plateShape: 'circle', particleStyle: 'salt' } },
   { label: 'Drifty',       settings: { frequency: 285, amplitude: 0.6,  waveform: 'sine', damping: 0.96, plateShape: 'circle', particleStyle: 'sand' } },
   { label: 'Buzz Hex',     settings: { frequency: 285, amplitude: 0.7,  waveform: 'saw',      plateShape: 'hexagon', particleStyle: 'metal' } },
+  { label: 'Perfect 5th', settings: { frequency: 262, amplitude: 0.65, waveform: 'sine', dualFreq: true, frequency2: 392, waveform2: 'sine', plateShape: 'circle', particleStyle: 'salt' } },
+  { label: 'Tritone',     settings: { frequency: 262, amplitude: 0.65, waveform: 'sine', dualFreq: true, frequency2: 370, waveform2: 'sine', plateShape: 'circle', particleStyle: 'sand' } },
 ];
 
 export default function CymaticsScreen() {
@@ -97,6 +142,12 @@ export default function CymaticsScreen() {
   const [dualFreq, setDualFreq] = useState(false);
   const [frequency2, setFrequency2] = useState(660);
   const [waveform2, setWaveform2] = useState<WaveformType>('sine');
+
+  // Intervals mode state
+  const [intervalsMode, setIntervalsMode] = useState(false);
+  const [rootNote, setRootNote] = useState(0); // index into NOTE_NAMES (0=C)
+  const [rootOctave, setRootOctave] = useState(3);
+  const [selectedInterval, setSelectedInterval] = useState(7); // index into INTERVALS (7=P5)
 
   // Damping override (null = use material default)
   const [damping, setDamping] = useState<number | null>(null);
@@ -204,6 +255,28 @@ export default function CymaticsScreen() {
     };
   }, [stopOsc2Internal]);
 
+  // ── Intervals mode sync ────────────────────────────────────────────
+  useEffect(() => {
+    if (!intervalsMode) return;
+    const rootFreq = noteFrequency(rootNote, rootOctave);
+    const interval = INTERVALS[selectedInterval];
+    const secondFreq = Math.round(rootFreq * Math.pow(2, interval.semitones / 12));
+    setFrequency(rootFreq);
+    setDualFreq(true);
+    setFrequency2(Math.min(secondFreq, 2000));
+  }, [intervalsMode, rootNote, rootOctave, selectedInterval, setFrequency]);
+
+  const handleIntervalToggle = useCallback((enabled: boolean) => {
+    setIntervalsMode(enabled);
+    if (!enabled) {
+      // Keep dual freq on but let user control manually
+    }
+  }, []);
+
+  const handleRootNoteChange = useCallback((noteIdx: number) => {
+    setRootNote(noteIdx);
+  }, []);
+
   // ── Sweep animation loop ──────────────────────────────────────────
   useEffect(() => {
     if (!sweepEnabled || !isPlaying) {
@@ -263,6 +336,7 @@ export default function CymaticsScreen() {
 
   const handleQuickPreset = useCallback((p: CymaticsQuickPreset) => {
     setSweepEnabled(false);
+    setIntervalsMode(false);
     setFrequency(p.frequency);
     setAmplitude(p.amplitude);
     setWaveform(p.waveform);
@@ -339,6 +413,7 @@ export default function CymaticsScreen() {
   const handleReset = useCallback(async () => {
     await stop();
     setSweepEnabled(false);
+    setIntervalsMode(false);
     setIsFrozen(false);
     setDualFreq(false);
     setFrequency2(660);
@@ -355,9 +430,11 @@ export default function CymaticsScreen() {
     setParticleStyle('sand');
   }, [stop, setFrequency, setAmplitude, setWaveform]);
 
-  const freqBadge = dualFreq
-    ? `${Math.round(frequency)} + ${Math.round(frequency2)} Hz · ${WAVEFORM_LABELS[waveform]} · ${PLATE_SHAPE_LABELS[plateShape]}`
-    : `${Math.round(frequency)} Hz · ${WAVEFORM_LABELS[waveform]} · ${PLATE_SHAPE_LABELS[plateShape]}`;
+  const freqBadge = intervalsMode
+    ? `${NOTE_NAMES[rootNote]}${rootOctave} ${INTERVALS[selectedInterval].name} (${INTERVALS[selectedInterval].ratio})`
+    : dualFreq
+      ? `${Math.round(frequency)} + ${Math.round(frequency2)} Hz · ${WAVEFORM_LABELS[waveform]} · ${PLATE_SHAPE_LABELS[plateShape]}`
+      : `${Math.round(frequency)} Hz · ${WAVEFORM_LABELS[waveform]} · ${PLATE_SHAPE_LABELS[plateShape]}`;
 
   return (
     <Screen>
@@ -534,6 +611,104 @@ export default function CymaticsScreen() {
             </Card>
           </View>
         </View>
+
+        {/* Intervals Mode */}
+        <SectionHeader title="INTERVALS" label />
+        <Card style={styles.card}>
+          <View style={styles.dualToggleRow}>
+            <Text style={styles.controlLabel}>Interval Mode</Text>
+            <Switch
+              value={intervalsMode}
+              onValueChange={handleIntervalToggle}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor={colors.textPrimary}
+            />
+          </View>
+
+          {intervalsMode && (
+            <>
+              {/* Root note selector */}
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Root Note</Text>
+              <View style={styles.noteGrid}>
+                {NOTE_NAMES.map((name, idx) => (
+                  <PrimaryButton
+                    key={name}
+                    title={name}
+                    variant={rootNote === idx ? 'filled' : 'ghost'}
+                    onPress={() => handleRootNoteChange(idx)}
+                    style={styles.noteButton}
+                  />
+                ))}
+              </View>
+
+              {/* Octave selector */}
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Octave</Text>
+              <SegmentedControl
+                options={['2', '3', '4', '5']}
+                selected={String(rootOctave)}
+                onSelect={(v: string) => setRootOctave(Number(v))}
+                labels={{ '2': '2', '3': '3', '4': '4', '5': '5' }}
+              />
+
+              <Text style={styles.rootFreqLabel}>
+                Root: {NOTE_NAMES[rootNote]}{rootOctave} = {noteFrequency(rootNote, rootOctave)} Hz
+              </Text>
+
+              {/* Interval buttons */}
+              <Text style={[styles.controlLabel, styles.labelSpacing]}>Interval</Text>
+              <View style={styles.intervalGrid}>
+                {INTERVALS.map((interval, idx) => (
+                  <PrimaryButton
+                    key={interval.shortName}
+                    title={interval.shortName}
+                    variant={selectedInterval === idx ? 'filled' : 'ghost'}
+                    onPress={() => setSelectedInterval(idx)}
+                    style={selectedInterval === idx
+                      ? { ...styles.intervalButton, backgroundColor: CONSONANCE_COLORS[interval.consonance] }
+                      : styles.intervalButton
+                    }
+                  />
+                ))}
+              </View>
+
+              {/* Active interval info */}
+              <View style={styles.intervalInfo}>
+                <Text style={styles.intervalName}>
+                  {INTERVALS[selectedInterval].name}
+                </Text>
+                <Text style={[
+                  styles.intervalRatio,
+                  { color: CONSONANCE_COLORS[INTERVALS[selectedInterval].consonance] },
+                ]}>
+                  {INTERVALS[selectedInterval].ratio}
+                </Text>
+              </View>
+
+              <Text style={styles.intervalFreqs}>
+                {noteFrequency(rootNote, rootOctave)} Hz + {Math.min(Math.round(noteFrequency(rootNote, rootOctave) * Math.pow(2, INTERVALS[selectedInterval].semitones / 12)), 2000)} Hz
+              </Text>
+
+              {/* Educational hint */}
+              <Text style={styles.hint}>{INTERVAL_HINT}</Text>
+
+              {/* Consonance legend */}
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: CONSONANCE_COLORS.perfect }]} />
+                  <Text style={styles.legendLabel}>Perfect</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: CONSONANCE_COLORS.consonant }]} />
+                  <Text style={styles.legendLabel}>Consonant</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: CONSONANCE_COLORS.dissonant }]} />
+                  <Text style={styles.legendLabel}>Dissonant</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </Card>
 
         {/* Sweep & Damping — side by side on tablet */}
         <View style={isTablet ? styles.tabletRow : undefined}>
@@ -788,6 +963,75 @@ const styles = StyleSheet.create({
   },
   resetDampingButton: {
     marginTop: spacing.sm,
+  },
+  noteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  noteButton: {
+    minWidth: 40,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  rootFreqLabel: {
+    fontSize: typography.sm,
+    color: colors.accent,
+    marginTop: spacing.md,
+    textAlign: 'center',
+    fontWeight: typography.medium,
+  },
+  intervalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  intervalButton: {
+    minWidth: 44,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  intervalInfo: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  intervalName: {
+    fontSize: typography.md,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+  },
+  intervalRatio: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+  },
+  intervalFreqs: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.md,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendLabel: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
   },
   bottomSpacer: {
     height: spacing.xxl,
