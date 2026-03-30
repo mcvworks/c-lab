@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, GestureResponderEvent, LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, SectionHeader, PrimarySlider } from '@/src/components';
 import { DroneGardenEngine } from '@/src/audio/DroneGardenEngine';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -52,7 +52,8 @@ export default function DroneGardenScreen() {
   const [seeds, setSeeds] = useState<SeedState[]>([]);
   const [masterVol, setMasterVol] = useState(0.6);
   const [canvasLayout, setCanvasLayout] = useState({ width: 0, height: 0 });
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canvasRef = useRef<View>(null);
+  const canvasPageOffset = useRef({ x: 0, y: 0 });
   const { contentWidth } = useResponsive();
 
   const getEngine = useCallback(() => {
@@ -75,12 +76,20 @@ export default function DroneGardenScreen() {
   }, [masterVol, getEngine]);
 
   const handleCanvasTap = useCallback(async (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
+    const { pageX, pageY, locationX, locationY } = e.nativeEvent;
     const { width, height } = canvasLayout;
     if (width <= 0 || height <= 0) return;
 
-    const xFrac = locationX / width;
-    const yFrac = locationY / height;
+    // locationX/Y can be undefined on web — fall back to pageX/Y minus canvas offset
+    let lx = locationX;
+    let ly = locationY;
+    if (lx == null || ly == null || !isFinite(lx) || !isFinite(ly)) {
+      lx = (pageX ?? 0) - canvasPageOffset.current.x;
+      ly = (pageY ?? 0) - canvasPageOffset.current.y;
+    }
+
+    const xFrac = Math.max(0, Math.min(1, lx / width));
+    const yFrac = Math.max(0, Math.min(1, ly / height));
     const freq = yToFreq(yFrac);
     const pan = xToPan(xFrac);
     const engine = getEngine();
@@ -124,10 +133,15 @@ export default function DroneGardenScreen() {
 
       {/* Canvas */}
       <View
+        ref={canvasRef}
         style={[styles.canvas, { height: canvasHeight }]}
         onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;
           setCanvasLayout({ width, height });
+          // Measure page offset for web fallback
+          canvasRef.current?.measureInWindow?.((x, y) => {
+            canvasPageOffset.current = { x: x ?? 0, y: y ?? 0 };
+          });
         }}
       >
         {/* Tap area */}
