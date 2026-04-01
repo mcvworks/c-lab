@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BinauralGenerator, AmbientGenerator, renderSession } from '@/src/audio';
+import { BinauralGenerator, AmbientGenerator, renderSession, getHapticEngine } from '@/src/audio';
 import type { AmbientLayerConfig, ExportProgress, CarrierWaveform, EntrainmentMode } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
+import { useAudioStore } from '@/src/state/useAudioStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
 import type { ComposerSettings, ExportRecord, BrainState } from '@/src/types/preset';
 import {
@@ -482,8 +483,11 @@ export default function ComposerScreen() {
     (v: number) => {
       setBeatDifference(v);
       updateBinauralIfPlaying(baseFrequency, v, binauralVolume);
+      if (isPlaying && useAudioStore.getState().hapticEnabled) {
+        getHapticEngine().updateBeatPulse(v, binauralVolume);
+      }
     },
-    [baseFrequency, binauralVolume, updateBinauralIfPlaying],
+    [isPlaying, baseFrequency, binauralVolume, updateBinauralIfPlaying],
   );
 
   const handleBinauralVolume = useCallback(
@@ -565,6 +569,7 @@ export default function ComposerScreen() {
     const gen = getGenerator();
     const ambient = getAmbient();
     await Promise.all([gen.stop(), ambient.stop()]);
+    getHapticEngine().stopBeatPulse();
     setIsPlaying(false);
   }, [clearTimer, getGenerator, getAmbient]);
 
@@ -592,6 +597,11 @@ export default function ComposerScreen() {
       setIsPlaying(true);
       setElapsedSeconds(0);
       fadeStartedRef.current = false;
+
+      // Start haptic beat pulse if enabled
+      if (useAudioStore.getState().hapticEnabled) {
+        getHapticEngine().startBeatPulse(initialBeat, binauralVolume);
+      }
 
       // Start countdown timer
       const startTime = Date.now();
@@ -629,6 +639,10 @@ export default function ComposerScreen() {
     const targetBeat = interpolateBeat(journeyStart, journeyEnd, progress);
     setBeatDifference(targetBeat);
     updateBinauralIfPlaying(baseFrequency, targetBeat, binauralVolume);
+    // Update haptic beat pulse to match new beat frequency
+    if (useAudioStore.getState().hapticEnabled) {
+      getHapticEngine().updateBeatPulse(targetBeat, binauralVolume);
+    }
   }, [isPlaying, journeyEnabled, elapsedSeconds, duration, journeyStart, journeyEnd, baseFrequency, binauralVolume, updateBinauralIfPlaying]);
 
   // Cleanup timer on unmount

@@ -1,0 +1,29 @@
+# Handoff
+- Task: 043 — Haptic feedback synced to audio
+- Status: done
+- Summary: Added a HapticEngine that syncs device vibration to audio content. Bass tones (<200 Hz) produce steady rumble, binaural beats pulse rhythmically at the beat frequency, and cymatics frequency changes trigger gentle taps. Haptics are toggleable in Settings and gracefully disabled on web/unsupported devices.
+- Files Changed:
+  - `src/audio/HapticEngine.ts` — New engine with bass rumble, beat pulse, and cymatics pulse modes
+  - `src/audio/index.ts` — Export HapticEngine and getHapticEngine singleton
+  - `src/state/useAudioStore.ts` — Added hapticEnabled state, setHapticEnabled action, integrated haptics into play/stop/setFrequency/setAmplitude
+  - `app/(tabs)/settings.tsx` — Added Haptic Feedback card with toggle switch
+  - `app/(tabs)/composer.tsx` — Integrated beat pulse haptics into session start/stop, journey interpolation, and manual beat difference changes
+  - `app/(tabs)/cymatics.tsx` — Added frequency-change haptic pulse effect
+  - `package.json` — Added expo-haptics dependency
+- Commands Run:
+  - `npx expo install expo-haptics`
+  - `npx tsc --noEmit` — clean
+  - `npx expo export --platform web` — clean
+- Testing:
+  - Toggle haptic feedback ON in Settings tab
+  - In Explore: play a low-frequency tone (<200 Hz) — device should vibrate subtly
+  - In Composer: start a binaural session — should feel rhythmic taps at the beat rate
+  - In Cymatics: change frequency with sweep or interval mode — gentle pulse on change
+  - On web: toggle should be disabled with "not available" message
+  - Verify haptics stop when playback stops
+- Blockers: None
+- Next Recommended Task: 044 (OLED dark theme)
+- Notes:
+  - Rate-limited haptic triggers to prevent battery drain (120ms bass, 80ms beat, 300ms cymatics)
+  - Intensity scales with amplitude and frequency proximity to bass range
+  - expo-haptics uses ImpactFeedbackStyle.Light/Medium/Heavy based on intensity level

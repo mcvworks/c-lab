@@ -3,6 +3,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'rea
 import { useAudioStore } from '@/src/state/useAudioStore';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
+import { getHapticEngine } from '@/src/audio';
 import type { WaveformType } from '@/src/audio';
 import type { ExploreSettings } from '@/src/types/preset';
 import {
@@ -169,10 +170,22 @@ export default function CymaticsScreen() {
 
   // Shared audio state
   const {
-    frequency, amplitude, waveform, isPlaying,
+    frequency, amplitude, waveform, isPlaying, hapticEnabled,
     setFrequency, setAmplitude, setWaveform, setSourceMode,
     play, stop,
   } = useAudioStore();
+
+  // Gentle haptic pulse when cymatics frequency changes
+  const prevFreqRef = useRef(frequency);
+  useEffect(() => {
+    if (!isPlaying || !hapticEnabled) return;
+    const delta = Math.abs(frequency - prevFreqRef.current);
+    prevFreqRef.current = frequency;
+    if (delta > 5) {
+      const intensity = Math.min(0.6, delta / 200);
+      getHapticEngine().pulseCymatics(intensity);
+    }
+  }, [frequency, isPlaying, hapticEnabled]);
 
   // ── Second oscillator management ──────────────────────────────────
   const startOsc2 = useCallback(() => {

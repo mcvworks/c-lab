@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ToneGenerator } from '@/src/audio';
+import { ToneGenerator, getHapticEngine } from '@/src/audio';
 import type { WaveformType, NoiseType, SourceMode, FrequencyScale, RoomPreset } from '@/src/audio';
 
 interface AudioState {
@@ -22,6 +22,9 @@ interface AudioState {
   roomPreset: RoomPreset;
   roomWetDry: number; // 0 = dry, 1 = fully wet
 
+  // Haptic feedback
+  hapticEnabled: boolean;
+
   // Actions
   setFrequency: (frequency: number) => void;
   setAmplitude: (amplitude: number) => void;
@@ -37,6 +40,7 @@ interface AudioState {
   setRoomEnabled: (enabled: boolean) => void;
   setRoomPreset: (preset: RoomPreset) => void;
   setRoomWetDry: (value: number) => void;
+  setHapticEnabled: (enabled: boolean) => void;
   play: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -76,12 +80,17 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   roomEnabled: false,
   roomPreset: 'cathedral' as RoomPreset,
   roomWetDry: 0.3,
+  hapticEnabled: false,
 
   setFrequency: (frequency) => {
     set({ frequency });
     const s = get();
     if (s.isPlaying && s.sourceMode === 'tone') {
       getGenerator().updateParams(buildParams(s));
+      // Update haptic bass rumble when frequency changes during playback
+      if (s.hapticEnabled) {
+        getHapticEngine().updateBassRumble(frequency, s.amplitude);
+      }
     }
   },
 
@@ -90,6 +99,10 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     const s = get();
     if (!s.isPlaying) return;
     getGenerator().updateParams(buildParams(s));
+    // Update haptic intensity when amplitude changes
+    if (s.hapticEnabled && s.sourceMode === 'tone') {
+      getHapticEngine().updateBassRumble(s.frequency, amplitude);
+    }
   },
 
   setWaveform: (waveform) => {
@@ -182,6 +195,19 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     }
   },
 
+  setHapticEnabled: (enabled) => {
+    set({ hapticEnabled: enabled });
+    const engine = getHapticEngine();
+    engine.setEnabled(enabled);
+    // If currently playing, start/stop haptics immediately
+    const s = get();
+    if (enabled && s.isPlaying && s.sourceMode === 'tone') {
+      engine.startBassRumble(s.frequency, s.amplitude);
+    } else if (!enabled) {
+      engine.stopAll();
+    }
+  },
+
   play: async () => {
     const s = get();
     if (s.sourceMode === 'mic') {
@@ -196,6 +222,10 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       gen.setRoomPreset(s.roomPreset);
       gen.setRoomWetDry(s.roomWetDry);
     }
+    // Start bass haptic rumble if enabled and playing a low tone
+    if (s.hapticEnabled && s.sourceMode === 'tone') {
+      getHapticEngine().startBassRumble(s.frequency, s.amplitude);
+    }
     set({ isPlaying: true });
   },
 
@@ -205,6 +235,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     if (s.sourceMode !== 'mic') {
       await getGenerator().stop();
     }
+    // Stop all haptic feedback on stop
+    getHapticEngine().stopAll();
   },
 
   reset: () => {
@@ -228,6 +260,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       roomEnabled: false,
       roomPreset: 'cathedral' as RoomPreset,
       roomWetDry: 0.3,
+      hapticEnabled: false,
     });
+    getHapticEngine().stopAll();
   },
 }));

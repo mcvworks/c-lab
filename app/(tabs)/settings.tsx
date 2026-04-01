@@ -1,12 +1,17 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
 import HeadphoneTest from '@/src/components/HeadphoneTest';
 import { useResponsive } from '@/src/hooks/useResponsive';
+import { useAudioStore } from '@/src/state/useAudioStore';
+import { getHapticEngine } from '@/src/audio';
 import { colors, spacing, typography } from '@/src/theme';
 
 export default function SettingsScreen() {
   const { isTablet } = useResponsive();
+  const hapticEnabled = useAudioStore((s) => s.hapticEnabled);
+  const setHapticEnabled = useAudioStore((s) => s.setHapticEnabled);
+  const hapticSupported = Platform.OS !== 'web';
 
   return (
     <Screen>
@@ -46,6 +51,42 @@ export default function SettingsScreen() {
 
         {/* Headphone Stereo Test */}
         <HeadphoneTest />
+
+        {/* Haptic Feedback */}
+        <Card style={styles.card}>
+          <Text style={styles.sectionLabel}>Haptic Feedback</Text>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bodyBold}>Sync vibration to audio</Text>
+              <Text style={styles.body}>
+                Feel bass tones and binaural beat rhythms through subtle device vibration.
+              </Text>
+            </View>
+            <Switch
+              value={hapticEnabled}
+              onValueChange={setHapticEnabled}
+              disabled={!hapticSupported}
+              trackColor={{ false: colors.border, true: colors.accentDim }}
+              thumbColor={hapticEnabled ? colors.accent : colors.textMuted}
+            />
+          </View>
+          {!hapticSupported && (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.bodyMuted}>
+                Haptic feedback is not available on this device.
+              </Text>
+            </>
+          )}
+          {hapticSupported && (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.body}>
+                When enabled, low-frequency tones produce a steady vibration, binaural beats pulse rhythmically, and cymatics frequency changes trigger gentle taps.
+              </Text>
+            </>
+          )}
+        </Card>
 
         {/* About Binaural Beats */}
         <Card style={styles.card}>
