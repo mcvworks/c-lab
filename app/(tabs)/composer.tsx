@@ -5,7 +5,7 @@ import type { AmbientLayerConfig, ExportProgress, CarrierWaveform, EntrainmentMo
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
-import type { ComposerSettings, ExportRecord } from '@/src/types/preset';
+import type { ComposerSettings, ExportRecord, BrainState } from '@/src/types/preset';
 import {
   Screen,
   Card,
@@ -17,8 +17,11 @@ import {
   SavePresetModal,
   PresetBar,
   BinauralWaveformView,
+  JourneyPanel,
+  interpolateBeat,
+  beatForState,
 } from '@/src/components';
-import type { QuickPreset } from '@/src/components';
+import type { QuickPreset, JourneyTemplate } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
 // ── Entrainment mode options ──────────────────────────────────────
@@ -214,6 +217,11 @@ export default function ComposerScreen() {
   const [fadeIn, setFadeIn] = useState(5);
   const [fadeOut, setFadeOut] = useState(5);
 
+  // Journey mode
+  const [journeyEnabled, setJourneyEnabled] = useState(false);
+  const [journeyStart, setJourneyStart] = useState<BrainState>('beta');
+  const [journeyEnd, setJourneyEnd] = useState<BrainState>('alpha');
+
   // Session timer
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -249,6 +257,7 @@ export default function ComposerScreen() {
       duration,
       fadeIn,
       fadeOut,
+      journey: journeyEnabled ? { enabled: true, startState: journeyStart, endState: journeyEnd } : undefined,
     };
 
     setExporting(true);
@@ -304,11 +313,12 @@ export default function ComposerScreen() {
       duration,
       fadeIn,
       fadeOut,
+      journey: journeyEnabled ? { enabled: true, startState: journeyStart, endState: journeyEnd } : undefined,
     };
     await savePreset(name, 'composer', settings);
     setShowSaveModal(false);
     Alert.alert('Saved', `Preset "${name || 'Composer Preset'}" saved to Library.`);
-  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, duration, fadeIn, fadeOut, savePreset]);
+  }, [baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, duration, fadeIn, fadeOut, journeyEnabled, journeyStart, journeyEnd, savePreset]);
 
   // Load preset from Library
   const pendingLoad = usePresetStore((s) => s.pendingLoad);
@@ -326,6 +336,13 @@ export default function ComposerScreen() {
       setDuration(s.duration);
       setFadeIn(s.fadeIn);
       setFadeOut(s.fadeOut);
+      if (s.journey?.enabled) {
+        setJourneyEnabled(true);
+        setJourneyStart(s.journey.startState);
+        setJourneyEnd(s.journey.endState);
+      } else {
+        setJourneyEnabled(false);
+      }
       setPendingLoad(null);
     }
   }, [pendingLoad, setPendingLoad]);
@@ -510,6 +527,38 @@ export default function ComposerScreen() {
     [baseFrequency, binauralVolume, updateBinauralIfPlaying],
   );
 
+  // Journey mode handlers
+  const handleJourneyToggle = useCallback(() => {
+    const next = !journeyEnabled;
+    setJourneyEnabled(next);
+    if (next) {
+      // Set initial beat difference to the start state
+      const startBeat = beatForState(journeyStart);
+      setBeatDifference(startBeat);
+      updateBinauralIfPlaying(baseFrequency, startBeat, binauralVolume);
+    }
+  }, [journeyEnabled, journeyStart, baseFrequency, binauralVolume, updateBinauralIfPlaying]);
+
+  const handleJourneyTemplate = useCallback((t: JourneyTemplate) => {
+    setJourneyStart(t.startState);
+    setJourneyEnd(t.endState);
+    setDuration(t.duration);
+    const startBeat = beatForState(t.startState);
+    setBeatDifference(startBeat);
+    updateBinauralIfPlaying(baseFrequency, startBeat, binauralVolume);
+  }, [baseFrequency, binauralVolume, updateBinauralIfPlaying]);
+
+  const handleJourneyStartChange = useCallback((s: BrainState) => {
+    setJourneyStart(s);
+    const startBeat = beatForState(s);
+    setBeatDifference(startBeat);
+    updateBinauralIfPlaying(baseFrequency, startBeat, binauralVolume);
+  }, [baseFrequency, binauralVolume, updateBinauralIfPlaying]);
+
+  const handleJourneyEndChange = useCallback((s: BrainState) => {
+    setJourneyEnd(s);
+  }, []);
+
   // Start / stop session
   const stopSession = useCallback(async () => {
     clearTimer();
@@ -525,10 +574,14 @@ export default function ComposerScreen() {
     if (isPlaying) {
       await stopSession();
     } else {
+      // When journey mode is on, start at the journey start-state beat
+      const initialBeat = journeyEnabled ? beatForState(journeyStart) : beatDifference;
+      if (journeyEnabled) setBeatDifference(initialBeat);
+
       await Promise.all([
         gen.play({
           leftFreq: baseFrequency,
-          rightFreq: baseFrequency + beatDifference,
+          rightFreq: baseFrequency + initialBeat,
           amplitude: binauralVolume,
           carrierWaveform,
           stereoWidth,
@@ -547,7 +600,7 @@ export default function ComposerScreen() {
         setElapsedSeconds(elapsed);
       }, 1000);
     }
-  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, getGenerator, getAmbient, stopSession]);
+  }, [isPlaying, baseFrequency, beatDifference, binauralVolume, carrierWaveform, stereoWidth, entrainmentMode, layers, getGenerator, getAmbient, stopSession, journeyEnabled, journeyStart]);
 
   // Auto-stop and fade-out effect
   useEffect(() => {
@@ -567,6 +620,16 @@ export default function ComposerScreen() {
       stopSession();
     }
   }, [isPlaying, elapsedSeconds, duration, fadeOut, stopSession]);
+
+  // Journey mode: smoothly interpolate beat frequency each tick
+  useEffect(() => {
+    if (!isPlaying || !journeyEnabled) return;
+    const totalSeconds = duration * 60;
+    const progress = totalSeconds > 0 ? Math.min(1, elapsedSeconds / totalSeconds) : 0;
+    const targetBeat = interpolateBeat(journeyStart, journeyEnd, progress);
+    setBeatDifference(targetBeat);
+    updateBinauralIfPlaying(baseFrequency, targetBeat, binauralVolume);
+  }, [isPlaying, journeyEnabled, elapsedSeconds, duration, journeyStart, journeyEnd, baseFrequency, binauralVolume, updateBinauralIfPlaying]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -655,23 +718,31 @@ export default function ComposerScreen() {
             step={0.5}
             formatValue={(v) => `${v.toFixed(1)} Hz`}
             style={styles.slider}
+            disabled={journeyEnabled}
           />
+          {journeyEnabled && (
+            <Text style={styles.hint}>Beat frequency is controlled by the journey timeline.</Text>
+          )}
 
           {/* Brainwave presets */}
-          <Text style={styles.controlLabel}>Brainwave Preset</Text>
-          <View style={styles.presetRow}>
-            {BRAINWAVE_PRESETS.map((preset) => (
-              <PrimaryButton
-                key={preset}
-                title={BRAINWAVE_LABELS[preset]}
-                variant={activeBrainwave === preset ? 'filled' : 'ghost'}
-                onPress={() => handleBrainwavePreset(preset)}
-                style={styles.presetButton}
-              />
-            ))}
-          </View>
-          {activeBrainwave && (
-            <Text style={styles.hint}>{BRAINWAVE_RANGES[activeBrainwave].desc}</Text>
+          {!journeyEnabled && (
+            <>
+              <Text style={styles.controlLabel}>Brainwave Preset</Text>
+              <View style={styles.presetRow}>
+                {BRAINWAVE_PRESETS.map((preset) => (
+                  <PrimaryButton
+                    key={preset}
+                    title={BRAINWAVE_LABELS[preset]}
+                    variant={activeBrainwave === preset ? 'filled' : 'ghost'}
+                    onPress={() => handleBrainwavePreset(preset)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+              {activeBrainwave && (
+                <Text style={styles.hint}>{BRAINWAVE_RANGES[activeBrainwave].desc}</Text>
+              )}
+            </>
           )}
 
           <PrimarySlider
@@ -715,6 +786,38 @@ export default function ComposerScreen() {
             <Text style={[styles.hint, styles.labelSpacing]}>
               Isochronal tones pulse a single tone on and off at the beat frequency. Works with speakers — no headphones required.
             </Text>
+          )}
+        </Card>
+
+        {/* ── Journey Mode Section ────────────────────────────────── */}
+        <Card style={styles.card}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionLabel}>Journey Mode</Text>
+            <PrimaryButton
+              title={journeyEnabled ? 'ON' : 'OFF'}
+              variant={journeyEnabled ? 'filled' : 'ghost'}
+              onPress={handleJourneyToggle}
+              style={styles.toggleButton}
+              disabled={isPlaying}
+            />
+          </View>
+          <Text style={styles.hint}>
+            Gradually transition between brain wave states over the session duration.
+          </Text>
+          {journeyEnabled && (
+            <View style={styles.journeyContent}>
+              <JourneyPanel
+                startState={journeyStart}
+                endState={journeyEnd}
+                duration={duration}
+                isPlaying={isPlaying}
+                elapsedSeconds={elapsedSeconds}
+                onStartStateChange={handleJourneyStartChange}
+                onEndStateChange={handleJourneyEndChange}
+                onDurationChange={setDuration}
+                onApplyTemplate={handleJourneyTemplate}
+              />
+            </View>
           )}
         </Card>
 
@@ -933,7 +1036,7 @@ export default function ComposerScreen() {
 
       <SavePresetModal
         visible={showSaveModal}
-        defaultName={`${beatDifference.toFixed(0)} Hz binaural`}
+        defaultName={journeyEnabled ? `Journey ${journeyStart} \u2192 ${journeyEnd} ${duration}m` : `${beatDifference.toFixed(0)} Hz binaural`}
         onSave={handleSavePreset}
         onCancel={() => setShowSaveModal(false)}
       />
@@ -1026,6 +1129,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.sm,
     lineHeight: 18,
+  },
+  journeyContent: {
+    marginTop: spacing.md,
   },
   // Ambient layer styles
   layerHeader: {

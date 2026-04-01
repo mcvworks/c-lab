@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { SAMPLE_RATE } from './types';
-import type { ComposerSettings, AmbientLayerSettings, CarrierWaveform, EntrainmentMode } from '@/src/types/preset';
+import type { ComposerSettings, AmbientLayerSettings, CarrierWaveform, EntrainmentMode, BrainState } from '@/src/types/preset';
 
 /**
  * Offline audio renderer for exporting composer sessions to WAV files.
@@ -185,6 +185,23 @@ export interface ExportResult {
   sizeBytes: number;
 }
 
+// ── Journey beat interpolation for export ────────────────────────
+const BRAIN_STATE_HZ: Record<BrainState, [number, number]> = {
+  delta: [0.5, 4],
+  theta: [4, 8],
+  alpha: [8, 13],
+  beta: [13, 30],
+};
+
+function journeyBeatAtProgress(startState: BrainState, endState: BrainState, progress: number): number {
+  const [sLo, sHi] = BRAIN_STATE_HZ[startState];
+  const [eLo, eHi] = BRAIN_STATE_HZ[endState];
+  const startHz = (sLo + sHi) / 2;
+  const endHz = (eLo + eHi) / 2;
+  const p = Math.max(0, Math.min(1, progress));
+  return startHz + (endHz - startHz) * p;
+}
+
 /**
  * Render a composer session to a WAV file and return its URI.
  *
@@ -231,16 +248,23 @@ export async function renderSession(
     const chunkLen = Math.min(CHUNK_SAMPLES, totalSamples - chunkStart);
 
     // -- Entrainment tone (binaural stereo or isochronal mono pulse) --
-    const leftFreq = settings.baseFrequency;
-    const rightFreq = settings.baseFrequency + settings.beatDifference;
     const waveform: CarrierWaveform = settings.carrierWaveform ?? 'sine';
     const mode: EntrainmentMode = settings.entrainmentMode ?? 'binaural';
     const width = settings.stereoWidth ?? 1;
     const crossGain = 1 - width;
+    const journey = settings.journey;
 
     for (let i = 0; i < chunkLen; i++) {
-      const t = (chunkStart + i) / SAMPLE_RATE;
-      const fadeGain = computeFadeGain(chunkStart + i, totalSamples, settings.fadeIn, settings.fadeOut);
+      const sampleIdx = chunkStart + i;
+      const t = sampleIdx / SAMPLE_RATE;
+      const fadeGain = computeFadeGain(sampleIdx, totalSamples, settings.fadeIn, settings.fadeOut);
+
+      // Compute beat difference — may vary per-sample in journey mode
+      const beat = journey?.enabled
+        ? journeyBeatAtProgress(journey.startState, journey.endState, sampleIdx / totalSamples)
+        : settings.beatDifference;
+      const leftFreq = settings.baseFrequency;
+      const rightFreq = settings.baseFrequency + beat;
 
       let leftSample: number;
       let rightSample: number;
@@ -248,7 +272,7 @@ export async function renderSession(
       if (mode === 'isochronal') {
         // Single carrier tone modulated by sine pulse at beat frequency
         const carrier = carrierSample(2 * Math.PI * leftFreq * t, waveform);
-        const beatFreq = Math.abs(rightFreq - leftFreq);
+        const beatFreq = Math.abs(beat);
         // Sine LFO mapped from [-1,1] to [0,1] for smooth pulse envelope
         const pulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * beatFreq * t);
         const sample = carrier * pulse * settings.binauralVolume;

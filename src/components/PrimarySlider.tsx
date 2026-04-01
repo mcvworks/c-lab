@@ -22,6 +22,7 @@ interface PrimarySliderProps {
   label?: string;
   formatValue?: (value: number) => string;
   style?: ViewStyle;
+  disabled?: boolean;
 }
 
 /**
@@ -37,6 +38,7 @@ export default function PrimarySlider({
   label,
   formatValue,
   style,
+  disabled,
 }: PrimarySliderProps) {
   const trackWidth = useSharedValue(0);
   const thumbScale = useSharedValue(1);
@@ -55,6 +57,7 @@ export default function PrimarySlider({
 
   const handleChange = useCallback(
     (x: number) => {
+      if (disabled) return;
       const w = trackWidth.value;
       if (w <= 0) return;
       const clamped = Math.max(0, Math.min(x, w));
@@ -63,7 +66,7 @@ export default function PrimarySlider({
       const final = Math.max(min, Math.min(max, quantized));
       onValueChange(final);
     },
-    [min, max, quantize, onValueChange, trackWidth],
+    [min, max, quantize, onValueChange, trackWidth, disabled],
   );
 
   const pan = Gesture.Pan()
@@ -92,7 +95,7 @@ export default function PrimarySlider({
   const displayValue = formatValue ? formatValue(value) : value.toFixed(step >= 1 ? 0 : 2);
 
   return (
-    <View style={[styles.wrapper, style]}>
+    <View style={[styles.wrapper, style, disabled && styles.disabled]}>
       {(label || formatValue) && (
         <View style={styles.labelRow}>
           {label ? <Text style={styles.label}>{label}</Text> : null}
@@ -123,6 +126,9 @@ export default function PrimarySlider({
 
 const styles = StyleSheet.create({
   wrapper: {},
+  disabled: {
+    opacity: 0.4,
+  },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

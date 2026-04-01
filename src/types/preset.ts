@@ -36,6 +36,14 @@ export interface AmbientLayerSettings {
 export type CarrierWaveform = 'sine' | 'triangle' | 'square';
 export type EntrainmentMode = 'binaural' | 'isochronal';
 
+export type BrainState = 'delta' | 'theta' | 'alpha' | 'beta';
+
+export interface JourneySettings {
+  enabled: boolean;
+  startState: BrainState;
+  endState: BrainState;
+}
+
 export interface ComposerSettings {
   baseFrequency: number;
   beatDifference: number;
@@ -47,6 +55,7 @@ export interface ComposerSettings {
   duration: number;
   fadeIn: number;
   fadeOut: number;
+  journey?: JourneySettings;
 }
 
 export type PresetType = 'explore' | 'composer';
