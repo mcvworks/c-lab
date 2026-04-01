@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioStore } from '@/src/state/useAudioStore';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
@@ -24,7 +24,11 @@ import {
   ToneBlendingView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import RotaryDial from '@/src/components/RotaryDial';
+import ControlDrawer from '@/src/components/ControlDrawer';
+import SnapshotButton from '@/src/components/SnapshotButton';
+import { useSnapshotStore } from '@/src/state/useSnapshotStore';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
 import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote, GenerativeDriftEngine, ToneBlendingEngine, BLEND_PRESETS, BLEND_WAVEFORMS, BLEND_WAVEFORM_LABELS } from '@/src/audio';
 import type { DriftBounds, DriftSpeed, BlendVoice, BlendWaveform } from '@/src/audio';
@@ -131,26 +135,48 @@ const INTERVAL_PRESETS = [
 /** Color tint based on frequency ratio complexity */
 function lissajousColor(a: number, b: number): string {
   const ratio = a / b;
-  // Simple ratios → accent, complex → highlight
+  // Simple ratios -> accent, complex -> highlight
   const simplicity = 1 / (Math.abs(ratio - Math.round(ratio)) + 0.1);
   if (simplicity > 5) return colors.accent;
   if (simplicity > 2) return '#60a5fa'; // blue
   return colors.highlight;
 }
 
+// ── Viz tabs ─────────────────────────────────────────────────────────
+type ActiveViz = 'waveform' | 'spectrum' | 'spectrogram';
+const VIZ_OPTIONS: ActiveViz[] = ['waveform', 'spectrum', 'spectrogram'];
+const VIZ_LABELS: Record<ActiveViz, string> = {
+  waveform: 'Wave',
+  spectrum: 'Spectrum',
+  spectrogram: 'Spectrogram',
+};
+
 export default function ExploreScreen() {
+  const c = useColors();
   const {
     sourceMode, frequency, amplitude, waveform, noiseType, detune, pan, frequencyScale, harmonics, attack, release, isPlaying,
     roomEnabled, roomPreset, roomWetDry,
     setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType,
     setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease,
     setRoomEnabled, setRoomPreset, setRoomWetDry,
+    setActiveSource,
     play, stop, reset,
   } = useAudioStore();
 
   const savePreset = usePresetStore((s) => s.savePreset);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [harmonicsExpanded, setHarmonicsExpanded] = useState(false);
+
+  // ── Layout: single-page, no-scroll ─────────────────────────────────
+  const [activeViz, setActiveViz] = useState<ActiveViz>('waveform');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [vizWidth, setVizWidth] = useState(300);
+  const [vizHeight, setVizHeight] = useState(200);
+
+  const onVizLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setVizWidth(Math.floor(width));
+    setVizHeight(Math.floor(height));
+  }, []);
 
   // ── Lissajous state ──────────────────────────────────────────────
   const [lissajousEnabled, setLissajousEnabled] = useState(false);
@@ -206,6 +232,30 @@ export default function ExploreScreen() {
     }
   }, [pendingLoad, setPendingLoad, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease, setRoomEnabled, setRoomPreset, setRoomWetDry]);
 
+  // Restore snapshot from Library
+  const pendingRestore = useSnapshotStore((s) => s.pendingRestore);
+  const setPendingRestore = useSnapshotStore((s) => s.setPendingRestore);
+  useEffect(() => {
+    if (pendingRestore && (pendingRestore.source === 'explore' || pendingRestore.source === 'cymatics')) {
+      const s = pendingRestore.settings as ExploreSettings;
+      setSourceMode(s.sourceMode);
+      setFrequency(s.frequency);
+      setAmplitude(s.amplitude);
+      setWaveform(s.waveform);
+      setNoiseType(s.noiseType);
+      if (s.detune != null) setDetune(s.detune);
+      if (s.pan != null) setPan(s.pan);
+      if (s.frequencyScale) setFrequencyScale(s.frequencyScale);
+      if (s.harmonics) { for (let i = 0; i < 3; i++) setHarmonic(i, s.harmonics[i]); }
+      if (s.attack != null) setAttack(s.attack);
+      if (s.release != null) setRelease(s.release);
+      setRoomEnabled(s.roomEnabled ?? false);
+      if (s.roomPreset) setRoomPreset(s.roomPreset);
+      if (s.roomWetDry != null) setRoomWetDry(s.roomWetDry);
+      setPendingRestore(null);
+    }
+  }, [pendingRestore, setPendingRestore, setSourceMode, setFrequency, setAmplitude, setWaveform, setNoiseType, setDetune, setPan, setFrequencyScale, setHarmonic, setAttack, setRelease, setRoomEnabled, setRoomPreset, setRoomWetDry]);
+
   const handleQuickPreset = useCallback((p: ExploreQuickPreset) => {
     setSourceMode(p.sourceMode);
     setWaveform(p.waveform);
@@ -236,8 +286,7 @@ export default function ExploreScreen() {
       && !roomEnabled;
   });
 
-  const { contentWidth, vizHeight, isTablet } = useResponsive();
-  const cardContentWidth = contentWidth - spacing.md * 2;
+  const { contentWidth } = useResponsive();
 
   // ── Lissajous: sync Freq A to tone generator ────────────────────
   useEffect(() => {
@@ -629,11 +678,12 @@ export default function ExploreScreen() {
 
   const handlePlay = useCallback(async () => {
     try {
+      setActiveSource('explore');
       await play();
     } catch (e) {
       Alert.alert('Audio Error', 'Could not start playback.');
     }
-  }, [play]);
+  }, [play, setActiveSource]);
 
   const handleStop = useCallback(async () => {
     await stop();
@@ -658,102 +708,415 @@ export default function ExploreScreen() {
   // Pan label helper
   const panLabel = pan === 0 ? 'Center' : pan < 0 ? `${Math.round(Math.abs(pan) * 100)}% L` : `${Math.round(pan * 100)}% R`;
 
+  // ── Determine if an optional viz mode is replacing the main viz ──
+  const hasOverrideViz = lissajousEnabled || blendEnabled || stringsEnabled || intervalEnabled;
+
+  // ── Render the active visualization ──────────────────────────────
+  const renderActiveViz = () => {
+    if (vizWidth < 10 || vizHeight < 10) return null;
+
+    // Optional viz modes override the main viz area
+    if (lissajousEnabled) {
+      return (
+        <LissajousView
+          freqA={lissFreqA}
+          freqB={lissFreqB}
+          phase={lissPhase}
+          trailLength={lissTrail}
+          color={lissColor}
+          width={vizWidth}
+          height={vizHeight}
+          isPlaying={lissajousEnabled}
+        />
+      );
+    }
+
+    if (blendEnabled) {
+      return (
+        <ToneBlendingView
+          voices={blendVoices}
+          voiceAnalysers={blendAnalysers}
+          compositeAnalyser={blendCompositeAnalyser}
+          width={vizWidth}
+          height={vizHeight}
+          isPlaying={blendPlaying}
+        />
+      );
+    }
+
+    if (stringsEnabled && sourceMode === 'tone') {
+      return (
+        <SympatheticStringsView
+          strings={stringNotes}
+          resonance={stringsResonance}
+          isPlaying={isPlaying}
+        />
+      );
+    }
+
+    if (intervalEnabled) {
+      return (
+        <IntervalBeatView
+          freq1={intervalFreq1}
+          freq2={intervalFreq2}
+          width={vizWidth}
+          height={vizHeight}
+          isPlaying={intervalPlaying}
+        />
+      );
+    }
+
+    if (roomEnabled && isPlaying) {
+      return (
+        <RoomVisualizer
+          preset={roomPreset}
+          wetDry={roomWetDry}
+          isPlaying={isPlaying}
+        />
+      );
+    }
+
+    // Default: one of the three standard visualizations
+    switch (activeViz) {
+      case 'waveform':
+        return (
+          <WaveformView
+            waveform={waveform}
+            frequency={frequency}
+            amplitude={amplitude}
+            width={vizWidth}
+            height={vizHeight}
+            isPlaying={isPlaying}
+            noiseType={sourceMode === 'noise' ? noiseType : null}
+            analyserNode={sourceMode === 'mic' ? micAnalyser : null}
+          />
+        );
+      case 'spectrum':
+        return (
+          <SpectrumView
+            frequency={frequency}
+            amplitude={amplitude}
+            width={vizWidth}
+            height={vizHeight}
+            isPlaying={isPlaying}
+            noiseType={sourceMode === 'noise' ? noiseType : null}
+            analyserNode={sourceMode === 'mic' ? micAnalyser : null}
+          />
+        );
+      case 'spectrogram':
+        return (
+          <SpectrogramView
+            frequency={frequency}
+            amplitude={amplitude}
+            width={vizWidth}
+            height={vizHeight}
+            isPlaying={isPlaying}
+            noiseType={sourceMode === 'noise' ? noiseType : null}
+            analyserNode={sourceMode === 'mic' ? micAnalyser : null}
+          />
+        );
+    }
+  };
+
+  // ── Viz label for the badge ──────────────────────────────────────
+  const vizOverrideLabel = lissajousEnabled
+    ? 'Lissajous'
+    : blendEnabled
+    ? 'Tone Blending'
+    : stringsEnabled && sourceMode === 'tone'
+    ? 'Sympathetic Strings'
+    : intervalEnabled
+    ? 'Interval Explorer'
+    : roomEnabled && isPlaying
+    ? 'Room Reverb'
+    : null;
+
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <SectionHeader title="Explore" subtitle="Tone generator & visualizations" />
-
+      <View style={styles.root}>
+        {/* ── Row 1: PresetBar ────────────────────────────────── ~40pt */}
         <PresetBar
           presets={EXPLORE_PRESETS}
           onSelect={handleQuickPreset}
           activeIndex={activePresetIndex >= 0 ? activePresetIndex : null}
         />
 
-        {/* Visualizations — side by side on tablet */}
-        <View style={isTablet ? styles.tabletRow : undefined}>
-          <Card style={[styles.vizCard, isTablet && styles.tabletHalf]} glowing={isPlaying}>
-            <View style={styles.vizHeader}>
-              <Text style={styles.vizTitle}>Waveform</Text>
-              <Text style={styles.vizBadge}>{vizBadge}</Text>
+        {/* ── Row 2: Source mode + Waveform selector ─────────── ~36pt */}
+        <View style={styles.topControlsRow}>
+          <SegmentedControl
+            options={SOURCE_MODES}
+            selected={sourceMode}
+            onSelect={setSourceMode}
+            labels={SOURCE_MODE_LABELS}
+          />
+          {sourceMode === 'tone' && (
+            <SegmentedControl
+              options={WAVEFORMS}
+              selected={waveform}
+              onSelect={setWaveform}
+              labels={WAVEFORM_LABELS}
+            />
+          )}
+          {sourceMode === 'noise' && (
+            <SegmentedControl
+              options={NOISE_TYPES}
+              selected={noiseType}
+              onSelect={setNoiseType}
+              labels={NOISE_LABELS}
+            />
+          )}
+          {sourceMode === 'mic' && micError && (
+            <Text style={styles.micErrorInline} numberOfLines={1}>{micError}</Text>
+          )}
+          {sourceMode === 'mic' && isPlaying && micAnalyser && (
+            <View style={styles.micActiveRowInline}>
+              <View style={styles.micDot} />
+              <Text style={styles.micActiveLabel}>{micNote || 'Listening...'}</Text>
             </View>
-            <View style={styles.vizContainer}>
-              <WaveformView
-                waveform={waveform}
-                frequency={frequency}
-                amplitude={amplitude}
-                width={isTablet ? (cardContentWidth - spacing.md) / 2 : cardContentWidth}
-                height={vizHeight}
-                isPlaying={isPlaying}
-                noiseType={sourceMode === 'noise' ? noiseType : null}
-                analyserNode={sourceMode === 'mic' ? micAnalyser : null}
-              />
-            </View>
-          </Card>
-
-          <Card style={[styles.vizCard, isTablet && styles.tabletHalf]} glowing={isPlaying}>
-            <View style={styles.vizHeader}>
-              <Text style={styles.vizTitle}>Spectrum</Text>
-              <Text style={styles.vizBadge}>{sourceMode === 'mic' ? (micNote || 'Listening...') : `${Math.round(amplitude * 100)}% level`}</Text>
-            </View>
-            <View style={styles.vizContainer}>
-              <SpectrumView
-                frequency={frequency}
-                amplitude={amplitude}
-                width={isTablet ? (cardContentWidth - spacing.md) / 2 : cardContentWidth}
-                height={vizHeight}
-                isPlaying={isPlaying}
-                noiseType={sourceMode === 'noise' ? noiseType : null}
-                analyserNode={sourceMode === 'mic' ? micAnalyser : null}
-              />
-            </View>
-          </Card>
+          )}
         </View>
 
-        {/* Spectrogram waterfall */}
-        <Card style={styles.vizCard} glowing={isPlaying}>
-          <View style={styles.vizHeader}>
-            <Text style={styles.vizTitle}>Spectrogram</Text>
-            <Text style={styles.vizBadge}>Waterfall</Text>
+        {/* ── Row 3: Active Visualization (flex: 1) ──────────────── */}
+        <View style={[styles.vizArea, { backgroundColor: c.background }]} onLayout={onVizLayout}>
+          <View style={styles.vizBadgeRow}>
+            <Text style={[styles.vizBadgeText, { backgroundColor: c.surfaceElevated }]}>
+              {vizOverrideLabel || vizBadge}
+            </Text>
           </View>
-          <View style={styles.vizContainer}>
-            <SpectrogramView
-              frequency={frequency}
-              amplitude={amplitude}
-              width={cardContentWidth}
-              height={vizHeight * 1.5}
-              isPlaying={isPlaying}
-              noiseType={sourceMode === 'noise' ? noiseType : null}
-              analyserNode={sourceMode === 'mic' ? micAnalyser : null}
-            />
+          <View style={styles.vizContent}>
+            {renderActiveViz()}
           </View>
-        </Card>
+        </View>
 
-        {/* Lissajous Figure */}
-        <SectionHeader title="LISSAJOUS" label />
-        <Card style={styles.card}>
-          <View style={styles.stringsHeaderRow}>
-            <Text style={styles.controlLabel}>Figure</Text>
+        {/* ── Row 4: Viz tabs ─────────────────────────────────── ~32pt */}
+        {!hasOverrideViz && (
+          <View style={styles.vizTabBar}>
+            {VIZ_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt}
+                style={[styles.vizTab, activeViz === opt && styles.vizTabActive, activeViz === opt && { backgroundColor: c.surfaceElevated }]}
+                onPress={() => setActiveViz(opt)}
+              >
+                <Text style={[styles.vizTabText, activeViz === opt && styles.vizTabTextActive]}>
+                  {VIZ_LABELS[opt]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {hasOverrideViz && (
+          <View style={styles.vizTabBar}>
+            <Text style={styles.vizTabOverrideHint}>
+              {vizOverrideLabel} active
+            </Text>
+          </View>
+        )}
+
+        {/* ── Row 5: Dials + Play/Stop ────────────────────────── ~100pt */}
+        <View style={styles.controlDials}>
+          <RotaryDial
+            label="Freq"
+            value={frequency}
+            onValueChange={setFrequency}
+            min={20}
+            max={2000}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} Hz`}
+            disabled={sourceMode !== 'tone'}
+          />
+          <RotaryDial
+            label="Amp"
+            value={amplitude}
+            onValueChange={setAmplitude}
+            min={0}
+            max={1}
+            step={0.01}
+            formatValue={(v) => `${Math.round(v * 100)}%`}
+            disabled={sourceMode === 'mic'}
+          />
+          <Pressable
+            style={[styles.playStopButton, { backgroundColor: c.surfaceElevated }, isPlaying && styles.playStopButtonActive]}
+            onPress={isPlaying ? handleStop : handlePlay}
+          >
+            <Text style={[styles.playStopText, isPlaying && styles.playStopTextActive, isPlaying && { color: c.background }]}>
+              {isPlaying ? 'STOP' : 'PLAY'}
+            </Text>
+          </Pressable>
+          <RotaryDial
+            label="Pan"
+            value={pan}
+            onValueChange={setPan}
+            min={-1}
+            max={1}
+            step={0.01}
+            formatValue={() => panLabel}
+            disabled={sourceMode === 'mic'}
+          />
+          <View style={styles.actionIcons}>
+            <IconButton variant="outline" onPress={handleReset}>
+              <Text style={styles.iconText}>↺</Text>
+            </IconButton>
+            <SnapshotButton
+              source="explore"
+              disabled={!isPlaying}
+              defaultName={sourceMode === 'noise' ? `${noiseType} noise` : `${waveform} ${Math.round(frequency)} Hz`}
+              getSettings={() => ({
+                sourceMode, frequency, amplitude, waveform, noiseType,
+                detune, pan, frequencyScale, harmonics, attack, release,
+                roomEnabled, roomPreset, roomWetDry,
+              })}
+            />
+            <IconButton variant="filled" onPress={() => setShowSaveModal(true)}>
+              <Text style={[styles.iconFilledText, { color: c.background }]}>♡</Text>
+            </IconButton>
+          </View>
+        </View>
+
+        {/* ── Row 6: Modules button ───────────────────────────── ~36pt */}
+        <Pressable
+          style={[styles.modulesButton, { backgroundColor: c.surfaceElevated }]}
+          onPress={() => setDrawerOpen(true)}
+        >
+          <Text style={styles.modulesButtonText}>Modules</Text>
+          <Text style={styles.modulesChevron}>▴</Text>
+        </Pressable>
+      </View>
+
+      {/* ── Control Drawer ───────────────────────────────────────── */}
+      <ControlDrawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="Modules"
+      >
+        {/* Harmonics — tone mode only */}
+        {sourceMode === 'tone' && (
+          <Card style={styles.drawerCard}>
+            <SectionHeader title="HARMONICS" label />
+            <PrimarySlider
+              label="2nd (2x)"
+              value={harmonics[0]}
+              onValueChange={(v) => setHarmonic(0, v)}
+              min={0}
+              max={1}
+              step={0.01}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+            />
+            <PrimarySlider
+              label="3rd (3x)"
+              value={harmonics[1]}
+              onValueChange={(v) => setHarmonic(1, v)}
+              min={0}
+              max={1}
+              step={0.01}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              style={styles.drawerSlider}
+            />
+            <PrimarySlider
+              label="4th (4x)"
+              value={harmonics[2]}
+              onValueChange={(v) => setHarmonic(2, v)}
+              min={0}
+              max={1}
+              step={0.01}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              style={styles.drawerSlider}
+            />
+          </Card>
+        )}
+
+        {/* Envelope */}
+        {sourceMode !== 'mic' && (
+          <Card style={styles.drawerCard}>
+            <SectionHeader title="ENVELOPE" label />
+            <PrimarySlider
+              label="Attack"
+              value={attack}
+              onValueChange={setAttack}
+              min={0}
+              max={2}
+              step={0.01}
+              formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+            />
+            <PrimarySlider
+              label="Release"
+              value={release}
+              onValueChange={setRelease}
+              min={0}
+              max={2}
+              step={0.01}
+              formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+              style={styles.drawerSlider}
+            />
+          </Card>
+        )}
+
+        {/* Detune — tone mode only */}
+        {sourceMode === 'tone' && (
+          <Card style={styles.drawerCard}>
+            <SectionHeader title="DETUNE" label />
+            <PrimarySlider
+              label="Detune"
+              value={detune}
+              onValueChange={setDetune}
+              min={-100}
+              max={100}
+              step={1}
+              formatValue={(v) => `${v > 0 ? '+' : ''}${Math.round(v)} cents`}
+            />
+          </Card>
+        )}
+
+        {/* Room Reverb */}
+        {sourceMode !== 'mic' && (
+          <Card style={styles.drawerCard}>
+            <View style={styles.drawerToggleRow}>
+              <Text style={styles.controlLabel}>Room Reverb</Text>
+              <PrimaryButton
+                title={roomEnabled ? 'ON' : 'OFF'}
+                variant={roomEnabled ? 'filled' : 'ghost'}
+                onPress={() => setRoomEnabled(!roomEnabled)}
+                style={styles.moduleToggle}
+              />
+            </View>
+            {roomEnabled && (
+              <>
+                <SegmentedControl
+                  options={ROOM_PRESETS}
+                  selected={roomPreset}
+                  onSelect={setRoomPreset}
+                  labels={ROOM_LABELS}
+                />
+                <PrimarySlider
+                  label="Wet / Dry"
+                  value={roomWetDry}
+                  onValueChange={setRoomWetDry}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  formatValue={(v) => `${Math.round(v * 100)}%`}
+                  style={styles.drawerSlider}
+                />
+              </>
+            )}
+          </Card>
+        )}
+
+        {/* ── Modules toggles ─────────────────────────────────── */}
+        <Card style={styles.drawerCard}>
+          <SectionHeader title="MODULES" label />
+
+          {/* Lissajous */}
+          <View style={styles.drawerToggleRow}>
+            <Text style={styles.controlLabel}>Lissajous</Text>
             <PrimaryButton
               title={lissajousEnabled ? 'ON' : 'OFF'}
               variant={lissajousEnabled ? 'filled' : 'ghost'}
               onPress={() => setLissajousEnabled((v) => !v)}
-              style={styles.stringsToggle}
+              style={styles.moduleToggle}
             />
           </View>
-
           {lissajousEnabled && (
-            <>
-              <LissajousView
-                freqA={lissFreqA}
-                freqB={lissFreqB}
-                phase={lissPhase}
-                trailLength={lissTrail}
-                color={lissColor}
-                width={cardContentWidth}
-                height={cardContentWidth * 0.75}
-                isPlaying={lissajousEnabled}
-              />
-
+            <View style={styles.moduleExpandedBlock}>
               {/* Ratio presets */}
               <View style={styles.presetRow}>
                 {LISSAJOUS_RATIOS.map((r) => (
@@ -770,20 +1133,17 @@ export default function ExploreScreen() {
                   />
                 ))}
               </View>
-
-              {/* Sync to tone toggle */}
               {sourceMode === 'tone' && (
-                <View style={styles.lissajousSyncRow}>
+                <View style={styles.drawerToggleRow}>
                   <Text style={styles.controlLabel}>Sync A to Tone</Text>
                   <PrimaryButton
                     title={lissSyncTone ? 'ON' : 'OFF'}
                     variant={lissSyncTone ? 'filled' : 'ghost'}
                     onPress={() => setLissSyncTone((v) => !v)}
-                    style={styles.stringsToggle}
+                    style={styles.moduleToggle}
                   />
                 </View>
               )}
-
               <PrimarySlider
                 label="Freq A (X)"
                 value={lissFreqA}
@@ -792,9 +1152,7 @@ export default function ExploreScreen() {
                 max={1000}
                 step={1}
                 formatValue={(v) => `${Math.round(v)} Hz`}
-                style={styles.slider}
               />
-
               <PrimarySlider
                 label="Freq B (Y)"
                 value={lissFreqB}
@@ -803,9 +1161,8 @@ export default function ExploreScreen() {
                 max={1000}
                 step={1}
                 formatValue={(v) => `${Math.round(v)} Hz`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
-
               <PrimarySlider
                 label="Phase"
                 value={lissPhase}
@@ -814,9 +1171,8 @@ export default function ExploreScreen() {
                 max={Math.PI * 2}
                 step={0.01}
                 formatValue={(v) => `${Math.round((v / Math.PI) * 180)}°`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
-
               <PrimarySlider
                 label="Trail"
                 value={lissTrail}
@@ -825,39 +1181,51 @@ export default function ExploreScreen() {
                 max={2000}
                 step={10}
                 formatValue={(v) => `${Math.round(v)}`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
+            </View>
+          )}
 
-              <Text style={styles.noiseHint}>
-                Lissajous figures trace two sine waves against each other. Simple frequency ratios create clean, stable patterns. Slowly detune one frequency to see the figure rotate and morph.
-              </Text>
+          {/* Sympathetic Strings — tone mode only */}
+          {sourceMode === 'tone' && (
+            <>
+              <View style={styles.drawerToggleRow}>
+                <Text style={styles.controlLabel}>Sympathetic Strings</Text>
+                <PrimaryButton
+                  title={stringsEnabled ? 'ON' : 'OFF'}
+                  variant={stringsEnabled ? 'filled' : 'ghost'}
+                  onPress={() => setStringsEnabled((v) => !v)}
+                  style={styles.moduleToggle}
+                />
+              </View>
+              {stringsEnabled && (
+                <View style={styles.moduleExpandedBlock}>
+                  <PrimarySlider
+                    label="Sympathetic Volume"
+                    value={stringsVolume}
+                    onValueChange={setStringsVolume}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                  />
+                </View>
+              )}
             </>
           )}
-        </Card>
 
-        {/* Interval Explorer */}
-        <SectionHeader title="INTERVAL EXPLORER" label />
-        <Card style={styles.card}>
-          <View style={styles.stringsHeaderRow}>
-            <Text style={styles.controlLabel}>Beat Frequency</Text>
+          {/* Interval Explorer */}
+          <View style={styles.drawerToggleRow}>
+            <Text style={styles.controlLabel}>Interval Explorer</Text>
             <PrimaryButton
               title={intervalEnabled ? 'ON' : 'OFF'}
               variant={intervalEnabled ? 'filled' : 'ghost'}
               onPress={() => setIntervalEnabled((v) => !v)}
-              style={styles.stringsToggle}
+              style={styles.moduleToggle}
             />
           </View>
-
           {intervalEnabled && (
-            <>
-              <IntervalBeatView
-                freq1={intervalFreq1}
-                freq2={intervalFreq2}
-                width={cardContentWidth}
-                height={cardContentWidth * 0.55}
-                isPlaying={intervalPlaying}
-              />
-
+            <View style={styles.moduleExpandedBlock}>
               {/* Beat info display */}
               <View style={styles.intervalInfoRow}>
                 <View style={styles.intervalInfoBlock}>
@@ -869,12 +1237,10 @@ export default function ExploreScreen() {
                 <View style={styles.intervalInfoBlock}>
                   <Text style={styles.intervalInfoLabel}>Interval</Text>
                   <Text style={[styles.intervalInfoValue, { color: intervalName ? colors.accent : colors.textMuted }]}>
-                    {intervalName ?? '—'}
+                    {intervalName ?? '---'}
                   </Text>
                 </View>
               </View>
-
-              {/* Interval preset buttons */}
               <View style={styles.intervalPresetWrap}>
                 {INTERVAL_PRESETS.map((p) => {
                   const targetF2 = Math.round(intervalFreq1 * p.ratio);
@@ -890,7 +1256,6 @@ export default function ExploreScreen() {
                   );
                 })}
               </View>
-
               <PrimarySlider
                 label="Tone 1"
                 value={intervalFreq1}
@@ -899,9 +1264,8 @@ export default function ExploreScreen() {
                 max={1000}
                 step={1}
                 formatValue={(v) => `${Math.round(v)} Hz`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
-
               <PrimarySlider
                 label="Tone 2"
                 value={intervalFreq2}
@@ -910,9 +1274,8 @@ export default function ExploreScreen() {
                 max={1000}
                 step={1}
                 formatValue={(v) => `${Math.round(v)} Hz`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
-
               <PrimarySlider
                 label="Volume"
                 value={intervalVolume}
@@ -921,40 +1284,23 @@ export default function ExploreScreen() {
                 max={0.8}
                 step={0.01}
                 formatValue={(v) => `${Math.round(v * 100)}%`}
-                style={styles.slider}
+                style={styles.drawerSlider}
               />
-
-              <Text style={styles.noiseHint}>
-                When two tones are close in frequency, they interfere to produce audible "beats" — a pulsing volume effect at the difference frequency. Piano tuners listen for this wobble to fine-tune strings. Try the "Beat" preset to hear it clearly, then slowly adjust Tone 2.
-              </Text>
-            </>
+            </View>
           )}
-        </Card>
 
-        {/* Tone Blending */}
-        <SectionHeader title="TONE BLENDING" label />
-        <Card style={styles.card}>
-          <View style={styles.stringsHeaderRow}>
-            <Text style={styles.controlLabel}>Additive Synthesis</Text>
+          {/* Tone Blending */}
+          <View style={styles.drawerToggleRow}>
+            <Text style={styles.controlLabel}>Tone Blending</Text>
             <PrimaryButton
               title={blendEnabled ? 'ON' : 'OFF'}
               variant={blendEnabled ? 'filled' : 'ghost'}
               onPress={() => setBlendEnabled((v) => !v)}
-              style={styles.stringsToggle}
+              style={styles.moduleToggle}
             />
           </View>
-
           {blendEnabled && (
-            <>
-              <ToneBlendingView
-                voices={blendVoices}
-                voiceAnalysers={blendAnalysers}
-                compositeAnalyser={blendCompositeAnalyser}
-                width={cardContentWidth}
-                height={cardContentWidth * 0.7}
-                isPlaying={blendPlaying}
-              />
-
+            <View style={styles.moduleExpandedBlock}>
               {/* Preset combinations */}
               <View style={styles.presetRow}>
                 {BLEND_PRESETS.map((p) => (
@@ -967,10 +1313,9 @@ export default function ExploreScreen() {
                   />
                 ))}
               </View>
-
               {/* Per-voice controls */}
               {blendVoices.map((voice, i) => (
-                <View key={i} style={styles.blendVoiceBlock}>
+                <View key={i} style={[styles.blendVoiceBlock, { borderTopColor: c.border }]}>
                   <View style={styles.blendVoiceHeader}>
                     <Text style={[styles.controlLabel, { color: ['#4ecdc4', '#a78bfa', '#f59e0b'][i], marginBottom: 0 }]}>
                       Voice {i + 1}
@@ -990,7 +1335,6 @@ export default function ExploreScreen() {
                       />
                     </View>
                   </View>
-
                   <View style={styles.blendWaveformRow}>
                     {BLEND_WAVEFORMS.map((w) => (
                       <PrimaryButton
@@ -1002,7 +1346,6 @@ export default function ExploreScreen() {
                       />
                     ))}
                   </View>
-
                   <PrimarySlider
                     label="Freq"
                     value={voice.frequency}
@@ -1020,391 +1363,43 @@ export default function ExploreScreen() {
                     max={1}
                     step={0.01}
                     formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
                 </View>
               ))}
-
-              <Text style={styles.noiseHint}>
-                Every complex sound is a combination of simple waveforms. Blend up to three voices to hear how additive synthesis works — the composite waveform below shows the sum. Try the presets for classic timbres, or experiment with close frequencies to hear beating.
-              </Text>
-            </>
+            </View>
           )}
-        </Card>
 
-        {/* Source Mode Toggle */}
-        <SectionHeader title="SOURCE" label />
-        <Card style={styles.card}>
-          <SegmentedControl
-            options={SOURCE_MODES}
-            selected={sourceMode}
-            onSelect={setSourceMode}
-            labels={SOURCE_MODE_LABELS}
-          />
-        </Card>
-
-        {/* Controls — conditional on source mode */}
-        {sourceMode === 'tone' ? (
-          <>
-            <SectionHeader title="TONE CONTROLS" label />
-            <Card style={styles.card}>
-              <Text style={styles.controlLabel}>Waveform Shape</Text>
-              <SegmentedControl
-                options={WAVEFORMS}
-                selected={waveform}
-                onSelect={setWaveform}
-                labels={WAVEFORM_LABELS}
-              />
-
-              {/* Frequency scale toggle */}
-              <View style={styles.freqScaleRow}>
-                <Text style={[styles.controlLabel, { marginBottom: 0 }]}>Frequency</Text>
-                <SegmentedControl
-                  options={FREQ_SCALE_OPTIONS}
-                  selected={frequencyScale}
-                  onSelect={setFrequencyScale}
-                  labels={FREQ_SCALE_LABELS}
-                />
-              </View>
-
-              {frequencyScale === 'linear' ? (
-                <PrimarySlider
-                  label="Frequency"
-                  value={frequency}
-                  onValueChange={setFrequency}
-                  min={20}
-                  max={2000}
-                  step={1}
-                  formatValue={(v) => `${Math.round(v)} Hz`}
-                />
-              ) : (
-                <PrimarySlider
-                  label="Frequency"
-                  value={logSliderValue}
-                  onValueChange={handleLogFrequency}
-                  min={0}
-                  max={1}
-                  step={0.001}
-                  formatValue={() => `${Math.round(frequency)} Hz`}
-                />
-              )}
-
-              <View style={styles.presetRow}>
-                {NOTE_PRESETS.map((note) => (
-                  <PrimaryButton
-                    key={note.label}
-                    title={note.label}
-                    variant={Math.abs(frequency - note.freq) < 1 ? 'filled' : 'ghost'}
-                    onPress={() => setFrequency(note.freq)}
-                    style={styles.presetButton}
-                  />
-                ))}
-              </View>
-
-              <PrimarySlider
-                label="Amplitude"
-                value={amplitude}
-                onValueChange={setAmplitude}
-                min={0}
-                max={1}
-                step={0.01}
-                formatValue={(v) => `${Math.round(v * 100)}%`}
-                style={styles.slider}
-              />
-
-              <PrimarySlider
-                label="Detune"
-                value={detune}
-                onValueChange={setDetune}
-                min={-100}
-                max={100}
-                step={1}
-                formatValue={(v) => `${v > 0 ? '+' : ''}${Math.round(v)} cents`}
-                style={styles.slider}
-              />
-            </Card>
-
-            {/* Harmonics — collapsible */}
-            <Card style={styles.card}>
-              <Pressable
-                style={styles.harmonicsHeader}
-                onPress={() => setHarmonicsExpanded((v) => !v)}
-              >
-                <Text style={styles.controlLabel}>Harmonics</Text>
-                <Text style={styles.harmonicsToggle}>{harmonicsExpanded ? '▾' : '▸'}</Text>
-              </Pressable>
-              {harmonicsExpanded && (
-                <View>
-                  <PrimarySlider
-                    label="2nd (2×)"
-                    value={harmonics[0]}
-                    onValueChange={(v) => setHarmonic(0, v)}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    formatValue={(v) => `${Math.round(v * 100)}%`}
-                  />
-                  <PrimarySlider
-                    label="3rd (3×)"
-                    value={harmonics[1]}
-                    onValueChange={(v) => setHarmonic(1, v)}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
-                  />
-                  <PrimarySlider
-                    label="4th (4×)"
-                    value={harmonics[2]}
-                    onValueChange={(v) => setHarmonic(2, v)}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
-                  />
-                  <Text style={styles.noiseHint}>
-                    Blend in overtones to shape the timbre. Each harmonic is a multiple of the base frequency.
-                  </Text>
-                </View>
-              )}
-            </Card>
-          </>
-        ) : sourceMode === 'noise' ? (
-          <>
-            <SectionHeader title="NOISE CONTROLS" label />
-            <Card style={styles.card}>
-              <Text style={styles.controlLabel}>Noise Type</Text>
-              <SegmentedControl
-                options={NOISE_TYPES}
-                selected={noiseType}
-                onSelect={setNoiseType}
-                labels={NOISE_LABELS}
-              />
-
-              <PrimarySlider
-                label="Amplitude"
-                value={amplitude}
-                onValueChange={setAmplitude}
-                min={0}
-                max={1}
-                step={0.01}
-                formatValue={(v) => `${Math.round(v * 100)}%`}
-                style={styles.slider}
-              />
-
-              <Text style={styles.noiseHint}>
-                {noiseType === 'white' && 'Equal energy across all frequencies — like static or rushing air.'}
-                {noiseType === 'pink' && 'More bass, softer highs — natural and balanced, like a waterfall.'}
-                {noiseType === 'brown' && 'Deep, rumbling low frequencies — like thunder or ocean waves.'}
-              </Text>
-            </Card>
-          </>
-        ) : (
-          <>
-            <SectionHeader title="MICROPHONE" label />
-            <Card style={styles.card}>
-              {isPlaying && micAnalyser && (
-                <View style={styles.micActiveRow}>
-                  <View style={styles.micDot} />
-                  <Text style={styles.micActiveLabel}>Microphone active</Text>
-                </View>
-              )}
-
-              {micError && (
-                <Text style={[styles.noiseHint, { color: '#f87171' }]}>
-                  {micError}
-                </Text>
-              )}
-
-              {isPlaying && micAnalyser && micFreq != null && (
-                <View style={styles.micPitchRow}>
-                  <Text style={styles.micPitchFreq}>{Math.round(micFreq)} Hz</Text>
-                  {micNote && <Text style={styles.micPitchNote}>{micNote}</Text>}
-                </View>
-              )}
-
-              <Text style={styles.noiseHint}>
-                Microphone mode captures live audio from your device and feeds it into the visualizations. No audio is played back through the speakers — this mode is for visualization only.{'\n\n'}Try whistling, humming, or playing an instrument to see the waveform, spectrum, and spectrogram respond in real time.
-              </Text>
-            </Card>
-          </>
-        )}
-
-        {/* Stereo Pan, Envelope, Space — hidden in mic mode */}
-        {sourceMode !== 'mic' && (
-          <>
-            <SectionHeader title="STEREO" label />
-            <Card style={styles.card}>
-              <PrimarySlider
-                label="Pan"
-                value={pan}
-                onValueChange={setPan}
-                min={-1}
-                max={1}
-                step={0.01}
-                formatValue={() => panLabel}
-              />
-              <View style={styles.panLabels}>
-                <Text style={styles.panEndLabel}>L</Text>
-                <Text style={styles.panEndLabel}>R</Text>
-              </View>
-            </Card>
-
-            <SectionHeader title="ENVELOPE" label />
-            <Card style={styles.card}>
-              <PrimarySlider
-                label="Attack"
-                value={attack}
-                onValueChange={setAttack}
-                min={0}
-                max={2}
-                step={0.01}
-                formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
-              />
-              <PrimarySlider
-                label="Release"
-                value={release}
-                onValueChange={setRelease}
-                min={0}
-                max={2}
-                step={0.01}
-                formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
-                style={styles.slider}
-              />
-              <Text style={styles.noiseHint}>
-                Attack fades in on play. Release fades out on stop. Small values feel snappy; larger values create smooth transitions.
-              </Text>
-            </Card>
-
-            <SectionHeader title="SPACE" label />
-        <Card style={styles.card}>
-          <View style={styles.stringsHeaderRow}>
-            <Text style={styles.controlLabel}>Room Reverb</Text>
-            <PrimaryButton
-              title={roomEnabled ? 'ON' : 'OFF'}
-              variant={roomEnabled ? 'filled' : 'ghost'}
-              onPress={() => setRoomEnabled(!roomEnabled)}
-              style={styles.stringsToggle}
-            />
-          </View>
-
-          {roomEnabled && (
+          {/* Generative Drift — tone mode only */}
+          {sourceMode === 'tone' && (
             <>
-              <SegmentedControl
-                options={ROOM_PRESETS}
-                selected={roomPreset}
-                onSelect={setRoomPreset}
-                labels={ROOM_LABELS}
-              />
-
-              <RoomVisualizer
-                preset={roomPreset}
-                wetDry={roomWetDry}
-                isPlaying={isPlaying}
-              />
-
-              <PrimarySlider
-                label="Wet / Dry"
-                value={roomWetDry}
-                onValueChange={setRoomWetDry}
-                min={0}
-                max={1}
-                step={0.01}
-                formatValue={(v) => `${Math.round(v * 100)}%`}
-                style={styles.slider}
-              />
-
-              <Text style={styles.noiseHint}>
-                {roomPreset === 'smallRoom' && 'Tight, warm reflections — like a bedroom or studio booth.'}
-                {roomPreset === 'cathedral' && 'Long, ethereal decay with rich harmonics — vast and immersive.'}
-                {roomPreset === 'cave' && 'Deep, dark reverberations with slow absorption — subterranean warmth.'}
-                {roomPreset === 'openAir' && 'Subtle early reflections with minimal decay — like an open field.'}
-                {roomPreset === 'box' && 'Bright, metallic resonance in a tight container — crisp and present.'}
-              </Text>
-            </>
-          )}
-        </Card>
-          </>
-        )}
-
-        {/* Sympathetic Strings — tone mode only */}
-        {sourceMode === 'tone' && (
-          <>
-            <SectionHeader title="SYMPATHETIC STRINGS" label />
-            <Card style={styles.card}>
-              <View style={styles.stringsHeaderRow}>
-                <Text style={styles.controlLabel}>Resonance</Text>
-                <PrimaryButton
-                  title={stringsEnabled ? 'ON' : 'OFF'}
-                  variant={stringsEnabled ? 'filled' : 'ghost'}
-                  onPress={() => setStringsEnabled((v) => !v)}
-                  style={styles.stringsToggle}
-                />
-              </View>
-
-              {stringsEnabled && (
-                <>
-                  <SympatheticStringsView
-                    strings={stringNotes}
-                    resonance={stringsResonance}
-                    isPlaying={isPlaying}
-                  />
-                  <PrimarySlider
-                    label="Sympathetic Volume"
-                    value={stringsVolume}
-                    onValueChange={setStringsVolume}
-                    min={0}
-                    max={0.5}
-                    step={0.01}
-                    formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
-                  />
-                  <Text style={styles.noiseHint}>
-                    Virtual strings resonate when your tone matches their tuning. Harmonics of the played frequency also excite nearby strings.
-                  </Text>
-                </>
-              )}
-            </Card>
-          </>
-        )}
-
-        {/* Generative Drift — tone mode only */}
-        {sourceMode === 'tone' && (
-          <>
-            <SectionHeader title="GENERATIVE DRIFT" label />
-            <Card style={styles.card}>
-              <View style={styles.stringsHeaderRow}>
-                <Text style={styles.controlLabel}>Drift Mode</Text>
+              <View style={styles.drawerToggleRow}>
+                <Text style={styles.controlLabel}>Generative Drift</Text>
                 <PrimaryButton
                   title={driftEnabled ? 'ON' : 'OFF'}
                   variant={driftEnabled ? 'filled' : 'ghost'}
                   onPress={() => setDriftEnabled((v) => !v)}
-                  style={styles.stringsToggle}
+                  style={styles.moduleToggle}
                 />
               </View>
-
               {driftEnabled && (
-                <>
-                  <Text style={[styles.controlLabel, { marginTop: spacing.md }]}>Speed</Text>
+                <View style={styles.moduleExpandedBlock}>
+                  <Text style={[styles.controlLabel, { marginTop: spacing.sm }]}>Speed</Text>
                   <SegmentedControl
                     options={DRIFT_SPEEDS}
                     selected={driftSpeed}
                     onSelect={setDriftSpeed}
                     labels={DRIFT_SPEED_LABELS}
                   />
-
-                  <View style={[styles.stringsHeaderRow, { marginTop: spacing.lg }]}>
+                  <View style={[styles.drawerToggleRow, { marginTop: spacing.md }]}>
                     <Text style={styles.controlLabel}>Breathing</Text>
                     <PrimaryButton
                       title={driftBreathing ? 'ON' : 'OFF'}
                       variant={driftBreathing ? 'filled' : 'ghost'}
                       onPress={() => setDriftBreathing((v) => !v)}
-                      style={styles.stringsToggle}
+                      style={styles.moduleToggle}
                     />
                   </View>
-
                   <PrimarySlider
                     label="Freq Min"
                     value={driftFreqMin}
@@ -1413,7 +1408,7 @@ export default function ExploreScreen() {
                     max={2000}
                     step={1}
                     formatValue={(v) => `${Math.round(v)} Hz`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
                   <PrimarySlider
                     label="Freq Max"
@@ -1423,9 +1418,8 @@ export default function ExploreScreen() {
                     max={2000}
                     step={1}
                     formatValue={(v) => `${Math.round(v)} Hz`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
-
                   <PrimarySlider
                     label="Amp Min"
                     value={driftAmpMin}
@@ -1434,7 +1428,7 @@ export default function ExploreScreen() {
                     max={1}
                     step={0.01}
                     formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
                   <PrimarySlider
                     label="Amp Max"
@@ -1444,9 +1438,8 @@ export default function ExploreScreen() {
                     max={1}
                     step={0.01}
                     formatValue={(v) => `${Math.round(v * 100)}%`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
-
                   <PrimarySlider
                     label="Pan Min"
                     value={driftPanMin}
@@ -1455,7 +1448,7 @@ export default function ExploreScreen() {
                     max={1}
                     step={0.01}
                     formatValue={(v) => v === 0 ? 'Center' : v < 0 ? `${Math.round(Math.abs(v) * 100)}% L` : `${Math.round(v * 100)}% R`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
                   <PrimarySlider
                     label="Pan Max"
@@ -1465,48 +1458,60 @@ export default function ExploreScreen() {
                     max={1}
                     step={0.01}
                     formatValue={(v) => v === 0 ? 'Center' : v < 0 ? `${Math.round(Math.abs(v) * 100)}% L` : `${Math.round(v * 100)}% R`}
-                    style={styles.slider}
+                    style={styles.drawerSlider}
                   />
-
-                  <Text style={styles.noiseHint}>
-                    Drift mode slowly wanders frequency, amplitude, and pan within the ranges you set. Enable Breathing for a gentle sine-wave pulsing on volume. All changes are smooth and click-free — ideal for ambient background listening.
-                  </Text>
-                </>
+                </View>
               )}
-            </Card>
-          </>
+            </>
+          )}
+        </Card>
+
+        {/* Noise-specific controls when sourceMode === 'noise' */}
+        {sourceMode === 'noise' && (
+          <Card style={styles.drawerCard}>
+            <SectionHeader title="NOISE" label />
+            <Text style={styles.controlLabel}>Noise Type</Text>
+            <SegmentedControl
+              options={NOISE_TYPES}
+              selected={noiseType}
+              onSelect={setNoiseType}
+              labels={NOISE_LABELS}
+            />
+            <Text style={styles.noiseHint}>
+              {noiseType === 'white' && 'Equal energy across all frequencies.'}
+              {noiseType === 'pink' && 'More bass, softer highs — natural and balanced.'}
+              {noiseType === 'brown' && 'Deep, rumbling low frequencies.'}
+            </Text>
+          </Card>
         )}
 
-        {/* Playback Controls */}
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            title={isPlaying ? (sourceMode === 'mic' ? 'Listening...' : 'Playing...') : sourceMode === 'mic' ? 'Start Mic' : sourceMode === 'noise' ? 'Play Noise' : 'Play Tone'}
-            onPress={handlePlay}
-            style={styles.buttonFlex}
-          />
-          <PrimaryButton
-            title="Stop"
-            variant="outline"
-            onPress={handleStop}
-            disabled={!isPlaying}
-            style={styles.buttonFlex}
-          />
-        </View>
-
-        <View style={styles.iconRow}>
-          <IconButton variant="outline" onPress={handleReset}>
-            <Text style={styles.iconText}>↺</Text>
-          </IconButton>
-          <IconButton variant="filled" onPress={() => setShowSaveModal(true)}>
-            <Text style={styles.iconFilledText}>♡</Text>
-          </IconButton>
-          <IconButton variant="ghost" onPress={() => Alert.alert('Info', 'Explore sound with different waveform shapes, frequencies, noise types, and amplitudes.\n\nDetune shifts pitch in small increments (cents).\nPan positions the sound in the stereo field.\nLog scale makes the frequency slider more musical.')}>
-            <Text style={styles.iconText}>ⓘ</Text>
-          </IconButton>
-        </View>
-
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+        {/* Mic-specific controls when sourceMode === 'mic' */}
+        {sourceMode === 'mic' && (
+          <Card style={styles.drawerCard}>
+            <SectionHeader title="MICROPHONE" label />
+            {isPlaying && micAnalyser && (
+              <View style={styles.micActiveRow}>
+                <View style={styles.micDot} />
+                <Text style={styles.micActiveLabel}>Microphone active</Text>
+              </View>
+            )}
+            {micError && (
+              <Text style={[styles.noiseHint, { color: '#f87171' }]}>
+                {micError}
+              </Text>
+            )}
+            {isPlaying && micAnalyser && micFreq != null && (
+              <View style={styles.micPitchRow}>
+                <Text style={styles.micPitchFreq}>{Math.round(micFreq)} Hz</Text>
+                {micNote && <Text style={styles.micPitchNote}>{micNote}</Text>}
+              </View>
+            )}
+            <Text style={styles.noiseHint}>
+              Microphone mode captures live audio and feeds it into the visualizations. No audio is played back.
+            </Text>
+          </Card>
+        )}
+      </ControlDrawer>
 
       <SavePresetModal
         visible={showSaveModal}
@@ -1519,38 +1524,152 @@ export default function ExploreScreen() {
 }
 
 const styles = StyleSheet.create({
-  vizCard: {
-    marginBottom: spacing.md,
+  root: {
+    flex: 1,
   },
-  vizHeader: {
+  // ── Row 2: Source + Waveform ───────────────────────────────────
+  topControlsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  vizTitle: {
-    fontSize: typography.sm,
-    fontWeight: typography.semibold,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  // ── Row 3: Viz area ───────────────────────────────────────────
+  vizArea: {
+    flex: 1,
+    marginHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
   },
-  vizBadge: {
+  vizBadgeRow: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.sm,
+    zIndex: 1,
+  },
+  vizBadgeText: {
     fontSize: typography.xs,
     fontWeight: typography.medium,
     color: colors.accent,
     backgroundColor: colors.surfaceElevated,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
     borderRadius: radius.sm,
     overflow: 'hidden',
   },
-  vizContainer: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: colors.background,
+  vizContent: {
+    flex: 1,
   },
-  card: {
+  // ── Row 4: Viz tab bar ────────────────────────────────────────
+  vizTabBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  vizTab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  vizTabActive: {
+    backgroundColor: colors.surfaceElevated,
+  },
+  vizTabText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.textMuted,
+  },
+  vizTabTextActive: {
+    color: colors.accent,
+    fontWeight: typography.semibold,
+  },
+  vizTabOverrideHint: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.accent,
+  },
+  // ── Row 5: Dials + Play/Stop ──────────────────────────────────
+  controlDials: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  playStopButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playStopButtonActive: {
+    backgroundColor: colors.accent,
+  },
+  playStopText: {
+    fontSize: typography.xs,
+    fontWeight: typography.bold,
+    color: colors.accent,
+    letterSpacing: 1,
+  },
+  playStopTextActive: {
+    color: colors.background,
+  },
+  actionIcons: {
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  // ── Row 6: Modules button ────────────────────────────────────
+  modulesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceElevated,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    marginHorizontal: spacing.sm,
+  },
+  modulesButtonText: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  modulesChevron: {
+    fontSize: typography.sm,
+    color: colors.accent,
+  },
+  // ── Drawer internals ─────────────────────────────────────────
+  drawerCard: {
+    marginBottom: spacing.md,
+  },
+  drawerSlider: {
+    marginTop: spacing.md,
+  },
+  drawerToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  moduleToggle: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    minWidth: 52,
+  },
+  moduleExpandedBlock: {
+    paddingLeft: spacing.xs,
     marginBottom: spacing.md,
   },
   controlLabel: {
@@ -1559,65 +1678,21 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
-  freqScaleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    gap: spacing.md,
-  },
-  slider: {
-    marginTop: spacing.lg,
-  },
-  presetRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  presetButton: {
-    flex: 1,
-    paddingVertical: spacing.xs,
-  },
-  harmonicsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  harmonicsToggle: {
-    fontSize: typography.sm,
-    color: colors.textMuted,
-  },
   noiseHint: {
     fontSize: typography.xs,
     color: colors.textMuted,
     marginTop: spacing.md,
     lineHeight: 18,
   },
-  panLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xs,
-    marginTop: -spacing.xs,
-  },
-  panEndLabel: {
-    fontSize: typography.xs,
-    fontWeight: typography.semibold,
-    color: colors.textMuted,
-  },
-  buttonRow: {
+  presetRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  buttonFlex: {
+  presetButton: {
     flex: 1,
-  },
-  iconRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    marginBottom: spacing.md,
+    paddingVertical: spacing.xs,
   },
   iconText: {
     fontSize: 18,
@@ -1627,35 +1702,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.background,
   },
-  tabletRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  tabletHalf: {
-    flex: 1,
-  },
-  stringsHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  stringsToggle: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    minWidth: 52,
-  },
-  lissajousSyncRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
+  // ── Interval Explorer (drawer) ────────────────────────────────
   intervalInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
   intervalInfoBlock: {
@@ -1682,8 +1733,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     minWidth: 48,
   },
+  // ── Tone Blending (drawer) ────────────────────────────────────
   blendVoiceBlock: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
@@ -1712,8 +1764,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.xs,
   },
-  bottomSpacer: {
-    height: spacing.xxl,
+  // ── Mic inline indicators ─────────────────────────────────────
+  micErrorInline: {
+    fontSize: typography.xs,
+    color: '#f87171',
+    flex: 1,
+  },
+  micActiveRowInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   micActiveRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BinauralGenerator, AmbientGenerator, renderSession, getHapticEngine } from '@/src/audio';
 import type { AmbientLayerConfig, ExportProgress, CarrierWaveform, EntrainmentMode } from '@/src/audio';
 import { usePresetStore } from '@/src/state/usePresetStore';
@@ -23,7 +23,11 @@ import {
   beatForState,
 } from '@/src/components';
 import type { QuickPreset, JourneyTemplate } from '@/src/components';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import RotaryDial from '@/src/components/RotaryDial';
+import ControlDrawer from '@/src/components/ControlDrawer';
+import SnapshotButton from '@/src/components/SnapshotButton';
+import { useSnapshotStore } from '@/src/state/useSnapshotStore';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
 // ── Entrainment mode options ──────────────────────────────────────
 const ENTRAINMENT_MODES: EntrainmentMode[] = ['binaural', 'isochronal'];
@@ -53,10 +57,10 @@ const BRAINWAVE_LABELS: Record<BrainwavePreset, string> = {
 };
 
 const BRAINWAVE_RANGES: Record<BrainwavePreset, { diff: number; desc: string }> = {
-  delta: { diff: 2, desc: 'Deep sleep · 0.5–4 Hz' },
-  theta: { diff: 6, desc: 'Meditation · 4–8 Hz' },
-  alpha: { diff: 10, desc: 'Relaxation · 8–13 Hz' },
-  beta: { diff: 20, desc: 'Focus · 13–30 Hz' },
+  delta: { diff: 2, desc: 'Deep sleep · 0.5-4 Hz' },
+  theta: { diff: 6, desc: 'Meditation · 4-8 Hz' },
+  alpha: { diff: 10, desc: 'Relaxation · 8-13 Hz' },
+  beta: { diff: 20, desc: 'Focus · 13-30 Hz' },
 };
 
 // ── Ambient layer types ─────────────────────────────────────────────
@@ -177,6 +181,7 @@ function formatTime(totalSeconds: number): string {
 let nextLayerId = 1;
 
 export default function ComposerScreen() {
+  const c = useColors();
   // Binaural generator (singleton per component mount)
   const generatorRef = useRef<BinauralGenerator | null>(null);
   const getGenerator = useCallback(() => {
@@ -227,6 +232,9 @@ export default function ComposerScreen() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeStartedRef = useRef(false);
+
+  // Control drawer
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -347,6 +355,33 @@ export default function ComposerScreen() {
       setPendingLoad(null);
     }
   }, [pendingLoad, setPendingLoad]);
+
+  // Restore snapshot from Library
+  const pendingRestore = useSnapshotStore((s) => s.pendingRestore);
+  const setPendingRestore = useSnapshotStore((s) => s.setPendingRestore);
+  useEffect(() => {
+    if (pendingRestore && pendingRestore.source === 'composer') {
+      const s = pendingRestore.settings as ComposerSettings;
+      setBaseFrequency(s.baseFrequency);
+      setBeatDifference(s.beatDifference);
+      setBinauralVolume(s.binauralVolume);
+      setCarrierWaveform(s.carrierWaveform ?? 'sine');
+      setStereoWidth(s.stereoWidth ?? 1);
+      setEntrainmentMode(s.entrainmentMode ?? 'binaural');
+      setLayers(s.layers.map((l) => ({ ...l, id: nextLayerId++, pan: l.pan ?? 0, filterCutoff: l.filterCutoff ?? DEFAULT_CUTOFF[l.type] })));
+      setDuration(s.duration);
+      setFadeIn(s.fadeIn);
+      setFadeOut(s.fadeOut);
+      if (s.journey?.enabled) {
+        setJourneyEnabled(true);
+        setJourneyStart(s.journey.startState);
+        setJourneyEnd(s.journey.endState);
+      } else {
+        setJourneyEnabled(false);
+      }
+      setPendingRestore(null);
+    }
+  }, [pendingRestore, setPendingRestore]);
 
   const leftFreq = baseFrequency;
   const rightFreq = baseFrequency + beatDifference;
@@ -571,6 +606,7 @@ export default function ComposerScreen() {
     await Promise.all([gen.stop(), ambient.stop()]);
     getHapticEngine().stopBeatPulse();
     setIsPlaying(false);
+    useAudioStore.getState().setComposerPlaying(false);
   }, [clearTimer, getGenerator, getAmbient]);
 
   const toggleSession = useCallback(async () => {
@@ -595,6 +631,7 @@ export default function ComposerScreen() {
         ambient.start(layers as AmbientLayerConfig[]),
       ]);
       setIsPlaying(true);
+      useAudioStore.getState().setComposerPlaying(true);
       setElapsedSeconds(0);
       fadeStartedRef.current = false;
 
@@ -652,194 +689,211 @@ export default function ComposerScreen() {
     };
   }, []);
 
+  // Timer progress fraction
+  const totalSeconds = duration * 60;
+  const progressFraction = totalSeconds > 0 ? Math.min(1, elapsedSeconds / totalSeconds) : 0;
+
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <SectionHeader title="Composer" subtitle="Binaural beats & ambient layers" />
-
+      <View style={styles.root}>
+        {/* ── Row 1: PresetBar ──────────────────────────────── */}
         <PresetBar
           presets={COMPOSER_PRESETS}
           onSelect={handleQuickPreset}
         />
 
-        {/* ── Entrainment Section ──────────────────────────────── */}
-        <Card style={styles.card}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionLabel}>{isBinaural ? 'Binaural Beat' : 'Isochronal Tone'}</Text>
-            <Text style={styles.badge}>{beatBadge}</Text>
-          </View>
-
+        {/* ── Row 2: Mode toggle + brain state badge ───────── */}
+        <View style={styles.topRow}>
           <SegmentedControl
             options={ENTRAINMENT_MODES}
             selected={entrainmentMode}
             onSelect={handleEntrainmentMode}
             labels={ENTRAINMENT_LABELS}
-            style={styles.modeToggle}
+            style={styles.modeToggleCompact}
           />
+          <View style={styles.badgeContainer}>
+            <Text style={[styles.badge, { backgroundColor: c.surfaceElevated }]}>{beatBadge}</Text>
+          </View>
+        </View>
 
+        {/* ── Row 3: BinauralWaveformView (flex center) ─────── */}
+        <View style={[styles.vizContainer, { backgroundColor: c.background }]}>
           {isBinaural ? (
-            <View style={styles.earReadout}>
-              <View style={styles.earBox}>
-                <Text style={styles.earLabel}>LEFT EAR</Text>
-                <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
-              </View>
-              <View style={styles.earDivider} />
-              <View style={styles.earBox}>
-                <Text style={styles.earLabel}>RIGHT EAR</Text>
-                <Text style={styles.earFreq}>{Math.round(rightFreq)} Hz</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.earReadout}>
-              <View style={styles.earBox}>
-                <Text style={styles.earLabel}>CARRIER</Text>
-                <Text style={styles.earFreq}>{Math.round(leftFreq)} Hz</Text>
-              </View>
-              <View style={styles.earDivider} />
-              <View style={styles.earBox}>
-                <Text style={styles.earLabel}>PULSE RATE</Text>
-                <Text style={styles.earFreq}>{beatDifference.toFixed(1)} Hz</Text>
-              </View>
-            </View>
-          )}
-
-          {isBinaural && (
             <BinauralWaveformView
               leftFreq={leftFreq}
               rightFreq={rightFreq}
               amplitude={binauralVolume}
               isPlaying={isPlaying}
             />
+          ) : (
+            <View style={styles.isoPlaceholder}>
+              <Text style={styles.isoLabel}>ISOCHRONAL</Text>
+              <Text style={styles.isoFreq}>{Math.round(leftFreq)} Hz @ {beatDifference.toFixed(1)} Hz pulse</Text>
+            </View>
           )}
+        </View>
 
-          <PrimarySlider
-            label="Base Frequency"
+        {/* ── Row 4: Ear frequency readouts ────────────────── */}
+        <View style={[styles.earReadoutCompact, { backgroundColor: c.background }]}>
+          {isBinaural ? (
+            <>
+              <View style={styles.earBoxCompact}>
+                <Text style={styles.earLabelCompact}>L</Text>
+                <Text style={styles.earFreqCompact}>{Math.round(leftFreq)} Hz</Text>
+              </View>
+              <View style={[styles.earDividerCompact, { backgroundColor: c.surfaceElevated }]} />
+              <View style={styles.earBoxCompact}>
+                <Text style={styles.earLabelCompact}>R</Text>
+                <Text style={styles.earFreqCompact}>{Math.round(rightFreq)} Hz</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.earBoxCompact}>
+                <Text style={styles.earLabelCompact}>CARRIER</Text>
+                <Text style={styles.earFreqCompact}>{Math.round(leftFreq)} Hz</Text>
+              </View>
+              <View style={[styles.earDividerCompact, { backgroundColor: c.surfaceElevated }]} />
+              <View style={styles.earBoxCompact}>
+                <Text style={styles.earLabelCompact}>PULSE</Text>
+                <Text style={styles.earFreqCompact}>{beatDifference.toFixed(1)} Hz</Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* ── Row 5: Rotary dials ──────────────────────────── */}
+        <View style={styles.dialRow}>
+          <RotaryDial
+            label="Base Freq"
             value={baseFrequency}
             onValueChange={handleBaseFrequency}
             min={80}
             max={500}
             step={1}
             formatValue={(v) => `${Math.round(v)} Hz`}
-            style={styles.slider}
           />
-
-          <PrimarySlider
-            label="Beat Difference"
+          <RotaryDial
+            label="Beat Diff"
             value={beatDifference}
             onValueChange={handleBeatDifference}
             min={0.5}
             max={40}
             step={0.5}
             formatValue={(v) => `${v.toFixed(1)} Hz`}
-            style={styles.slider}
             disabled={journeyEnabled}
           />
-          {journeyEnabled && (
-            <Text style={styles.hint}>Beat frequency is controlled by the journey timeline.</Text>
-          )}
-
-          {/* Brainwave presets */}
-          {!journeyEnabled && (
-            <>
-              <Text style={styles.controlLabel}>Brainwave Preset</Text>
-              <View style={styles.presetRow}>
-                {BRAINWAVE_PRESETS.map((preset) => (
-                  <PrimaryButton
-                    key={preset}
-                    title={BRAINWAVE_LABELS[preset]}
-                    variant={activeBrainwave === preset ? 'filled' : 'ghost'}
-                    onPress={() => handleBrainwavePreset(preset)}
-                    style={styles.presetButton}
-                  />
-                ))}
-              </View>
-              {activeBrainwave && (
-                <Text style={styles.hint}>{BRAINWAVE_RANGES[activeBrainwave].desc}</Text>
-              )}
-            </>
-          )}
-
-          <PrimarySlider
-            label="Binaural Volume"
+          <RotaryDial
+            label="Volume"
             value={binauralVolume}
             onValueChange={handleBinauralVolume}
             min={0}
             max={1}
             step={0.01}
             formatValue={(v) => `${Math.round(v * 100)}%`}
-            style={styles.slider}
           />
+        </View>
 
-          <Text style={[styles.controlLabel, styles.labelSpacing]}>Carrier Waveform</Text>
-          <SegmentedControl
-            options={CARRIER_WAVEFORMS}
-            selected={carrierWaveform}
-            onSelect={handleCarrierWaveform}
-            labels={CARRIER_LABELS}
-          />
-
-          {isBinaural && (
-            <>
-              <PrimarySlider
-                label="Stereo Width"
-                value={stereoWidth}
-                onValueChange={handleStereoWidth}
-                min={0}
-                max={1}
-                step={0.01}
-                formatValue={(v) => `${Math.round(v * 100)}%`}
-                style={styles.slider}
-              />
-              <Text style={styles.hint}>
-                {stereoWidth < 0.1 ? 'Mono — no binaural separation' : stereoWidth > 0.9 ? 'Full stereo — maximum binaural effect' : 'Partial stereo separation'}
-              </Text>
-            </>
-          )}
-
-          {!isBinaural && (
-            <Text style={[styles.hint, styles.labelSpacing]}>
-              Isochronal tones pulse a single tone on and off at the beat frequency. Works with speakers — no headphones required.
-            </Text>
-          )}
-        </Card>
-
-        {/* ── Journey Mode Section ────────────────────────────────── */}
-        <Card style={styles.card}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionLabel}>Journey Mode</Text>
-            <PrimaryButton
-              title={journeyEnabled ? 'ON' : 'OFF'}
-              variant={journeyEnabled ? 'filled' : 'ghost'}
-              onPress={handleJourneyToggle}
-              style={styles.toggleButton}
-              disabled={isPlaying}
-            />
+        {/* ── Row 6: Brainwave preset buttons ──────────────── */}
+        {!journeyEnabled ? (
+          <View style={styles.brainwaveRow}>
+            {BRAINWAVE_PRESETS.map((preset) => (
+              <TouchableOpacity
+                key={preset}
+                style={[
+                  styles.brainwaveButton,
+                  { borderColor: c.border },
+                  activeBrainwave === preset && styles.brainwaveButtonActive,
+                ]}
+                onPress={() => handleBrainwavePreset(preset)}
+              >
+                <Text style={[
+                  styles.brainwaveButtonText,
+                  activeBrainwave === preset && styles.brainwaveButtonTextActive,
+                  activeBrainwave === preset && { color: c.background },
+                ]}>
+                  {BRAINWAVE_LABELS[preset]}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <Text style={styles.hint}>
-            Gradually transition between brain wave states over the session duration.
-          </Text>
-          {journeyEnabled && (
-            <View style={styles.journeyContent}>
-              <JourneyPanel
-                startState={journeyStart}
-                endState={journeyEnd}
-                duration={duration}
-                isPlaying={isPlaying}
-                elapsedSeconds={elapsedSeconds}
-                onStartStateChange={handleJourneyStartChange}
-                onEndStateChange={handleJourneyEndChange}
-                onDurationChange={setDuration}
-                onApplyTemplate={handleJourneyTemplate}
-              />
+        ) : (
+          <View style={styles.brainwaveRow}>
+            <Text style={styles.journeyHint}>Journey: {journeyStart} → {journeyEnd}</Text>
+          </View>
+        )}
+
+        {/* ── Row 7: Start/Stop + compact timer ────────────── */}
+        <View style={styles.playbackRow}>
+          <TouchableOpacity
+            style={[styles.sessionButton, isPlaying && styles.sessionButtonStop]}
+            onPress={toggleSession}
+          >
+            <Text style={[styles.sessionButtonText, { color: c.background }, isPlaying && styles.sessionButtonTextStop]}>
+              {isPlaying ? 'Stop' : 'Start Session'}
+            </Text>
+          </TouchableOpacity>
+          {isPlaying && (
+            <View style={styles.compactTimer}>
+              <Text style={styles.compactTimerText}>
+                {formatTime(elapsedSeconds)} / {formatTime(totalSeconds)}
+              </Text>
+              <View style={[styles.compactTimerBarBg, { backgroundColor: c.surfaceElevated }]}>
+                <View style={[styles.compactTimerBarFill, { width: `${Math.round(progressFraction * 100)}%` }]} />
+              </View>
             </View>
           )}
-        </Card>
+          <View style={styles.compactActions}>
+            <SnapshotButton
+              source="composer"
+              disabled={!isPlaying}
+              defaultName={journeyEnabled ? `Journey ${journeyStart} → ${journeyEnd}` : `${beatDifference.toFixed(0)} Hz binaural`}
+              getSettings={() => ({
+                baseFrequency, beatDifference, binauralVolume,
+                carrierWaveform, stereoWidth, entrainmentMode,
+                layers: layers.map(({ type, volume, enabled, pan, filterCutoff }) => ({ type, volume, enabled, pan, filterCutoff })),
+                duration, fadeIn, fadeOut,
+                journey: journeyEnabled ? { enabled: true, startState: journeyStart, endState: journeyEnd } : undefined,
+              })}
+            />
+            {!isPlaying && (
+              <IconButton
+                variant="filled"
+                onPress={() => setShowSaveModal(true)}
+              >
+                <Text style={[styles.iconFilledText, { color: c.background }]}>♡</Text>
+              </IconButton>
+            )}
+          </View>
+        </View>
 
-        {/* ── Ambient Layers Section ─────────────────────────────── */}
+        {/* ── Row 8: Drawer toggle bar ─────────────────────── */}
+        <View style={styles.drawerToggleRow}>
+          <TouchableOpacity
+            style={[styles.drawerToggleButton, { backgroundColor: c.surfaceElevated }]}
+            onPress={() => setDrawerVisible(true)}
+          >
+            <Text style={styles.drawerToggleText}>Layers</Text>
+            <Text style={styles.drawerToggleDot}>·</Text>
+            <Text style={styles.drawerToggleText}>Journey</Text>
+            <Text style={styles.drawerToggleDot}>·</Text>
+            <Text style={styles.drawerToggleText}>Session</Text>
+            <Text style={styles.drawerToggleChevron}>▲</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── Control Drawer ─────────────────────────────────── */}
+      <ControlDrawer
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        title="Controls"
+      >
+        {/* ── Ambient Layers ───────────────────────────────── */}
         <SectionHeader title="AMBIENT LAYERS" label />
 
         {layers.map((layer) => (
-          <Card key={layer.id} style={styles.card}>
+          <Card key={layer.id} style={styles.drawerCard}>
             <View style={styles.layerHeader}>
               <PrimaryButton
                 title={layer.enabled ? 'ON' : 'OFF'}
@@ -902,129 +956,138 @@ export default function ComposerScreen() {
           style={styles.addLayerButton}
         />
 
-        {/* ── Session & Playback — side by side on tablet ───────── */}
-        <View style={isTablet ? styles.tabletRow : undefined}>
-          <View style={isTablet ? styles.tabletHalf : undefined}>
-            <SectionHeader title="SESSION" label />
-            <Card style={styles.card}>
-              <Text style={styles.controlLabel}>Duration</Text>
-              <View style={styles.presetRow}>
-                {DURATION_PRESETS.map((d) => (
-                  <PrimaryButton
-                    key={d}
-                    title={`${d}m`}
-                    variant={duration === d ? 'filled' : 'ghost'}
-                    onPress={() => setDuration(d)}
-                    style={styles.presetButton}
-                  />
-                ))}
-              </View>
+        {/* ── Journey Mode ─────────────────────────────────── */}
+        <SectionHeader title="JOURNEY MODE" label />
+        <Card style={styles.drawerCard}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionLabel}>Journey Mode</Text>
+            <PrimaryButton
+              title={journeyEnabled ? 'ON' : 'OFF'}
+              variant={journeyEnabled ? 'filled' : 'ghost'}
+              onPress={handleJourneyToggle}
+              style={styles.toggleButton}
+              disabled={isPlaying}
+            />
+          </View>
+          <Text style={styles.hint}>
+            Gradually transition between brain wave states over the session duration.
+          </Text>
+          {journeyEnabled && (
+            <View style={styles.journeyContent}>
+              <JourneyPanel
+                startState={journeyStart}
+                endState={journeyEnd}
+                duration={duration}
+                isPlaying={isPlaying}
+                elapsedSeconds={elapsedSeconds}
+                onStartStateChange={handleJourneyStartChange}
+                onEndStateChange={handleJourneyEndChange}
+                onDurationChange={setDuration}
+                onApplyTemplate={handleJourneyTemplate}
+              />
+            </View>
+          )}
+        </Card>
 
+        {/* ── Session Settings ─────────────────────────────── */}
+        <SectionHeader title="SESSION" label />
+        <Card style={styles.drawerCard}>
+          <Text style={styles.controlLabel}>Duration</Text>
+          <View style={styles.presetRow}>
+            {DURATION_PRESETS.map((d) => (
+              <PrimaryButton
+                key={d}
+                title={`${d}m`}
+                variant={duration === d ? 'filled' : 'ghost'}
+                onPress={() => setDuration(d)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+
+          <PrimarySlider
+            label="Duration"
+            value={duration}
+            onValueChange={(v) => setDuration(Math.round(v))}
+            min={1}
+            max={120}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} min`}
+            style={styles.slider}
+          />
+
+          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade In</Text>
+          <View style={styles.presetRow}>
+            {FADE_OPTIONS.map((f) => (
+              <PrimaryButton
+                key={`in-${f}`}
+                title={f === 0 ? 'None' : `${f}s`}
+                variant={fadeIn === f ? 'filled' : 'ghost'}
+                onPress={() => setFadeIn(f)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+
+          <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade Out</Text>
+          <View style={styles.presetRow}>
+            {FADE_OPTIONS.map((f) => (
+              <PrimaryButton
+                key={`out-${f}`}
+                title={f === 0 ? 'None' : `${f}s`}
+                variant={fadeOut === f ? 'filled' : 'ghost'}
+                onPress={() => setFadeOut(f)}
+                style={styles.presetButton}
+              />
+            ))}
+          </View>
+        </Card>
+
+        {/* ── Carrier Waveform ─────────────────────────────── */}
+        <SectionHeader title="CARRIER WAVEFORM" label />
+        <Card style={styles.drawerCard}>
+          <SegmentedControl
+            options={CARRIER_WAVEFORMS}
+            selected={carrierWaveform}
+            onSelect={handleCarrierWaveform}
+            labels={CARRIER_LABELS}
+          />
+        </Card>
+
+        {/* ── Stereo Width (binaural only) ─────────────────── */}
+        {isBinaural && (
+          <>
+            <SectionHeader title="STEREO WIDTH" label />
+            <Card style={styles.drawerCard}>
               <PrimarySlider
-                label="Duration"
-                value={duration}
-                onValueChange={(v) => setDuration(Math.round(v))}
-                min={1}
-                max={120}
-                step={1}
-                formatValue={(v) => `${Math.round(v)} min`}
-                style={styles.slider}
+                label="Stereo Width"
+                value={stereoWidth}
+                onValueChange={handleStereoWidth}
+                min={0}
+                max={1}
+                step={0.01}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
               />
-
-              <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade In</Text>
-              <View style={styles.presetRow}>
-                {FADE_OPTIONS.map((f) => (
-                  <PrimaryButton
-                    key={`in-${f}`}
-                    title={f === 0 ? 'None' : `${f}s`}
-                    variant={fadeIn === f ? 'filled' : 'ghost'}
-                    onPress={() => setFadeIn(f)}
-                    style={styles.presetButton}
-                  />
-                ))}
-              </View>
-
-              <Text style={[styles.controlLabel, styles.labelSpacing]}>Fade Out</Text>
-              <View style={styles.presetRow}>
-                {FADE_OPTIONS.map((f) => (
-                  <PrimaryButton
-                    key={`out-${f}`}
-                    title={f === 0 ? 'None' : `${f}s`}
-                    variant={fadeOut === f ? 'filled' : 'ghost'}
-                    onPress={() => setFadeOut(f)}
-                    style={styles.presetButton}
-                  />
-                ))}
-              </View>
+              <Text style={styles.hint}>
+                {stereoWidth < 0.1 ? 'Mono -- no binaural separation' : stereoWidth > 0.9 ? 'Full stereo -- maximum binaural effect' : 'Partial stereo separation'}
+              </Text>
             </Card>
-          </View>
+          </>
+        )}
 
-          {/* ── Playback Controls ──────────────────────────────────── */}
-          <View style={isTablet ? styles.tabletHalf : undefined}>
-            {isTablet && <SectionHeader title="PLAYBACK" label />}
-
-            {isPlaying && (
-              <Card style={styles.timerCard}>
-                <View style={styles.timerRow}>
-                  <View style={styles.timerCol}>
-                    <Text style={styles.timerLabel}>ELAPSED</Text>
-                    <Text style={styles.timerValue}>{formatTime(elapsedSeconds)}</Text>
-                  </View>
-                  <View style={styles.timerDivider} />
-                  <View style={styles.timerCol}>
-                    <Text style={styles.timerLabel}>REMAINING</Text>
-                    <Text style={styles.timerValue}>{formatTime(Math.max(0, duration * 60 - elapsedSeconds))}</Text>
-                  </View>
-                </View>
-                <View style={styles.timerBarBg}>
-                  <View style={[styles.timerBarFill, { width: `${Math.min(100, (elapsedSeconds / (duration * 60)) * 100)}%` }]} />
-                </View>
-              </Card>
-            )}
-
-            <View style={styles.buttonRow}>
-              <PrimaryButton
-                title={isPlaying ? 'Stop Session' : 'Start Session'}
-                variant={isPlaying ? 'outline' : 'filled'}
-                onPress={toggleSession}
-                style={styles.buttonFlex}
-              />
-            </View>
-
-            <View style={styles.buttonRow}>
-              <PrimaryButton
-                title={exporting ? 'Exporting…' : 'Export WAV'}
-                variant="outline"
-                onPress={handleExport}
-                style={styles.buttonFlex}
-                disabled={exporting}
-              />
-            </View>
-
-            <View style={styles.iconRow}>
-              <IconButton
-                variant="filled"
-                onPress={() => setShowSaveModal(true)}
-              >
-                <Text style={styles.iconFilledText}>♡</Text>
-              </IconButton>
-              <IconButton
-                variant="ghost"
-                onPress={() =>
-                  Alert.alert(
-                    'Composer',
-                    'Build binaural beat sessions with ambient layers.\n\nBinaural beats work by playing slightly different frequencies in each ear — the perceived beat frequency is the difference between them.\n\nUse headphones for the full effect.',
-                  )
-                }
-              >
-                <Text style={styles.iconText}>ⓘ</Text>
-              </IconButton>
-            </View>
-          </View>
+        {/* ── Export ───────────────────────────────────────── */}
+        <View style={styles.drawerExportRow}>
+          <PrimaryButton
+            title={exporting ? 'Exporting...' : 'Export WAV'}
+            variant="outline"
+            onPress={handleExport}
+            style={styles.buttonFlex}
+            disabled={exporting}
+          />
         </View>
 
-        {/* Safety notice */}
-        <View style={styles.safetyNotice}>
+        {/* ── Safety Notice ────────────────────────────────── */}
+        <View style={[styles.safetyNotice, { backgroundColor: c.surfaceElevated }]}>
           <Text style={styles.safetyText}>
             {isBinaural
               ? '🎧 Binaural beats require stereo headphones for the intended effect.'
@@ -1032,15 +1095,28 @@ export default function ComposerScreen() {
           </Text>
         </View>
 
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+        {/* Info button */}
+        <View style={styles.drawerInfoRow}>
+          <IconButton
+            variant="ghost"
+            onPress={() =>
+              Alert.alert(
+                'Composer',
+                'Build binaural beat sessions with ambient layers.\n\nBinaural beats work by playing slightly different frequencies in each ear -- the perceived beat frequency is the difference between them.\n\nUse headphones for the full effect.',
+              )
+            }
+          >
+            <Text style={styles.iconText}>ⓘ</Text>
+          </IconButton>
+        </View>
+      </ControlDrawer>
 
       {/* Export progress overlay */}
       <Modal visible={exporting} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.progressCard}>
-            <Text style={styles.progressTitle}>Exporting Audio…</Text>
-            <View style={styles.progressBarBg}>
+          <View style={[styles.progressCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={styles.progressTitle}>Exporting Audio...</Text>
+            <View style={[styles.progressBarBg, { backgroundColor: c.surfaceElevated }]}>
               <View style={[styles.progressBarFill, { width: `${Math.round(exportProgress * 100)}%` }]} />
             </View>
             <Text style={styles.progressText}>{Math.round(exportProgress * 100)}%</Text>
@@ -1059,7 +1135,223 @@ export default function ComposerScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: {
+  root: {
+    flex: 1,
+  },
+  // ── Top row: mode toggle + badge ─────────────────────
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  modeToggleCompact: {
+    flex: 1,
+  },
+  badgeContainer: {
+    flexShrink: 0,
+  },
+  badge: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.accent,
+    backgroundColor: colors.surfaceElevated,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  // ── Visualization ────────────────────────────────────
+  vizContainer: {
+    flex: 1,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.xs,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+    minHeight: 80,
+  },
+  isoPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  isoLabel: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: spacing.xs,
+  },
+  isoFreq: {
+    fontSize: typography.md,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  // ── Ear readouts (compact) ───────────────────────────
+  earReadoutCompact: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.background,
+    borderRadius: radius.sm,
+  },
+  earBoxCompact: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  earDividerCompact: {
+    width: 1,
+    backgroundColor: colors.surfaceElevated,
+    marginHorizontal: spacing.sm,
+  },
+  earLabelCompact: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  earFreqCompact: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  // ── Rotary dials ─────────────────────────────────────
+  dialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  // ── Brainwave presets ────────────────────────────────
+  brainwaveRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginVertical: spacing.xs,
+  },
+  brainwaveButton: {
+    flex: 1,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  brainwaveButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  brainwaveButtonText: {
+    fontSize: typography.xs,
+    fontWeight: typography.semibold,
+    color: colors.textSecondary,
+  },
+  brainwaveButtonTextActive: {
+    color: colors.background,
+  },
+  journeyHint: {
+    fontSize: typography.xs,
+    color: colors.accent,
+    fontWeight: typography.medium,
+  },
+  // ── Playback row ─────────────────────────────────────
+  playbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  sessionButton: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  sessionButtonStop: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  sessionButtonText: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.background,
+  },
+  sessionButtonTextStop: {
+    color: colors.danger,
+  },
+  compactTimer: {
+    flex: 1,
+    gap: 2,
+  },
+  compactTimerText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  compactTimerBarBg: {
+    width: '100%',
+    height: 3,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  compactTimerBarFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
+  },
+  compactActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  // ── Drawer toggle bar ────────────────────────────────
+  drawerToggleRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  drawerToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  drawerToggleText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    color: colors.textSecondary,
+  },
+  drawerToggleDot: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+  },
+  drawerToggleChevron: {
+    fontSize: 10,
+    color: colors.accent,
+    marginLeft: spacing.xs,
+  },
+  // ── Drawer content styles ────────────────────────────
+  drawerCard: {
     marginBottom: spacing.md,
   },
   sectionTitleRow: {
@@ -1074,47 +1366,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-  },
-  badge: {
-    fontSize: typography.xs,
-    fontWeight: typography.medium,
-    color: colors.accent,
-    backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-  },
-  modeToggle: {
-    marginBottom: spacing.md,
-  },
-  earReadout: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  earBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  earDivider: {
-    width: 1,
-    backgroundColor: colors.surfaceElevated,
-    marginHorizontal: spacing.sm,
-  },
-  earLabel: {
-    fontSize: typography.xs,
-    fontWeight: typography.semibold,
-    color: colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-  },
-  earFreq: {
-    fontSize: typography.xl,
-    fontWeight: typography.bold,
-    color: colors.textPrimary,
   },
   controlLabel: {
     fontSize: typography.sm,
@@ -1179,63 +1430,13 @@ const styles = StyleSheet.create({
   addLayerButton: {
     marginBottom: spacing.md,
   },
-  // Timer styles
-  timerCard: {
-    marginBottom: spacing.md,
-    backgroundColor: colors.background,
-  },
-  timerRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.sm,
-  },
-  timerCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  timerDivider: {
-    width: 1,
-    backgroundColor: colors.surfaceElevated,
-    marginHorizontal: spacing.sm,
-  },
-  timerLabel: {
-    fontSize: typography.xs,
-    fontWeight: typography.semibold,
-    color: colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-  },
-  timerValue: {
-    fontSize: typography.xl,
-    fontWeight: typography.bold,
-    color: colors.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  timerBarBg: {
-    width: '100%',
-    height: 4,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  timerBarFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: radius.full,
-  },
-  // Playback & utility
-  buttonRow: {
+  drawerExportRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginVertical: spacing.md,
   },
   buttonFlex: {
     flex: 1,
-  },
-  iconRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    marginBottom: spacing.md,
   },
   iconText: {
     fontSize: 18,
@@ -1259,15 +1460,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  tabletRow: {
+  drawerInfoRow: {
     flexDirection: 'row',
-    gap: spacing.md,
-  },
-  tabletHalf: {
-    flex: 1,
-  },
-  bottomSpacer: {
-    height: spacing.xxl,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
   },
   // Export progress modal
   modalOverlay: {
