@@ -1,0 +1,18 @@
+# Handoff
+- Task: 047 — Frequency discovery engine
+- Status: done
+- Summary: Created `useFrequencyDiscovery` hook that monitors active playback frequency and auto-discovers cataloged frequencies when the user dwells within ±2 Hz for ≥1.5 seconds. Integrated into Explore, Cymatics, and Composer tabs.
+- Files Changed:
+  - `src/hooks/useFrequencyDiscovery.ts` — new hook with tolerance matching and dwell timer
+  - `app/(tabs)/explore.tsx` — added hook with source='explore'
+  - `app/(tabs)/cymatics.tsx` — added hook with source='cymatics'
+  - `app/(tabs)/composer.tsx` — added hook with source='composer', using local baseFrequency state
+- Commands Run: `npx tsc --noEmit` — clean
+- Testing:
+  - Play a tone on Explore at exactly 440 Hz, hold for 2+ seconds — should auto-discover "Concert A"
+  - Set cymatics frequency to 528 Hz and play — should discover "Transformation"
+  - Set composer base frequency to 200 Hz — no catalog match, no discovery
+  - Previously discovered frequencies should not trigger again
+- Blockers: None
+- Next Recommended Task: 048 — Collector UI
+- Notes: The hook accepts an optional `onDiscovery` callback for notification UI (task 049). Currently called without it — notifications can be wired in later.
