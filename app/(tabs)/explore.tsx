@@ -21,12 +21,13 @@ import {
   LissajousView,
   SpectrogramView,
   IntervalBeatView,
+  ToneBlendingView,
 } from '@/src/components';
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
-import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote, GenerativeDriftEngine } from '@/src/audio';
-import type { DriftBounds, DriftSpeed } from '@/src/audio';
+import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote, GenerativeDriftEngine, ToneBlendingEngine, BLEND_PRESETS, BLEND_WAVEFORMS, BLEND_WAVEFORM_LABELS } from '@/src/audio';
+import type { DriftBounds, DriftSpeed, BlendVoice, BlendWaveform } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -536,6 +537,96 @@ export default function ExploreScreen() {
     };
   }, []);
 
+  // ── Tone Blending ────────────────────────────────────────────────
+  const DEFAULT_BLEND_VOICES: BlendVoice[] = [
+    { frequency: 261.63, waveform: 'sine', volume: 0.5, muted: false, solo: false },
+    { frequency: 329.63, waveform: 'sine', volume: 0.45, muted: false, solo: false },
+    { frequency: 392,    waveform: 'sine', volume: 0.45, muted: false, solo: false },
+  ];
+  const [blendEnabled, setBlendEnabled] = useState(false);
+  const [blendVoices, setBlendVoices] = useState<BlendVoice[]>(DEFAULT_BLEND_VOICES);
+  const [blendAnalysers, setBlendAnalysers] = useState<(AnalyserNode | null)[]>([null, null, null]);
+  const [blendCompositeAnalyser, setBlendCompositeAnalyser] = useState<AnalyserNode | null>(null);
+  const blendEngineRef = useRef<ToneBlendingEngine | null>(null);
+
+  const getBlendEngine = useCallback(() => {
+    if (!blendEngineRef.current) {
+      blendEngineRef.current = new ToneBlendingEngine();
+    }
+    return blendEngineRef.current;
+  }, []);
+
+  const blendPlaying = blendEnabled && isPlaying;
+
+  // Start/stop blend engine with playback
+  useEffect(() => {
+    const engine = getBlendEngine();
+    if (blendPlaying) {
+      if (!engine.isActive()) {
+        engine.start(blendVoices);
+        setBlendAnalysers([
+          engine.getVoiceAnalyser(0),
+          engine.getVoiceAnalyser(1),
+          engine.getVoiceAnalyser(2),
+        ]);
+        setBlendCompositeAnalyser(engine.getCompositeAnalyser());
+      }
+    } else {
+      engine.stop();
+      setBlendAnalysers([null, null, null]);
+      setBlendCompositeAnalyser(null);
+    }
+  }, [blendPlaying, getBlendEngine]);
+
+  // Update voices live
+  useEffect(() => {
+    const engine = getBlendEngine();
+    if (engine.isActive()) {
+      for (let i = 0; i < blendVoices.length; i++) {
+        engine.updateVoice(i, blendVoices[i], blendVoices);
+      }
+    }
+  }, [blendVoices, getBlendEngine]);
+
+  const updateBlendVoice = useCallback((index: number, updates: Partial<BlendVoice>) => {
+    setBlendVoices((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  }, []);
+
+  const toggleBlendMute = useCallback((index: number) => {
+    setBlendVoices((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], muted: !next[index].muted };
+      return next;
+    });
+  }, []);
+
+  const toggleBlendSolo = useCallback((index: number) => {
+    setBlendVoices((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], solo: !next[index].solo };
+      return next;
+    });
+  }, []);
+
+  const applyBlendPreset = useCallback((preset: typeof BLEND_PRESETS[number]) => {
+    setBlendVoices(preset.voices.map((v) => ({
+      ...v,
+      muted: false,
+      solo: false,
+    })));
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      blendEngineRef.current?.dispose();
+    };
+  }, []);
+
   const handlePlay = useCallback(async () => {
     try {
       await play();
@@ -835,6 +926,107 @@ export default function ExploreScreen() {
 
               <Text style={styles.noiseHint}>
                 When two tones are close in frequency, they interfere to produce audible "beats" — a pulsing volume effect at the difference frequency. Piano tuners listen for this wobble to fine-tune strings. Try the "Beat" preset to hear it clearly, then slowly adjust Tone 2.
+              </Text>
+            </>
+          )}
+        </Card>
+
+        {/* Tone Blending */}
+        <SectionHeader title="TONE BLENDING" label />
+        <Card style={styles.card}>
+          <View style={styles.stringsHeaderRow}>
+            <Text style={styles.controlLabel}>Additive Synthesis</Text>
+            <PrimaryButton
+              title={blendEnabled ? 'ON' : 'OFF'}
+              variant={blendEnabled ? 'filled' : 'ghost'}
+              onPress={() => setBlendEnabled((v) => !v)}
+              style={styles.stringsToggle}
+            />
+          </View>
+
+          {blendEnabled && (
+            <>
+              <ToneBlendingView
+                voices={blendVoices}
+                voiceAnalysers={blendAnalysers}
+                compositeAnalyser={blendCompositeAnalyser}
+                width={cardContentWidth}
+                height={cardContentWidth * 0.7}
+                isPlaying={blendPlaying}
+              />
+
+              {/* Preset combinations */}
+              <View style={styles.presetRow}>
+                {BLEND_PRESETS.map((p) => (
+                  <PrimaryButton
+                    key={p.label}
+                    title={p.label}
+                    variant="ghost"
+                    onPress={() => applyBlendPreset(p)}
+                    style={styles.presetButton}
+                  />
+                ))}
+              </View>
+
+              {/* Per-voice controls */}
+              {blendVoices.map((voice, i) => (
+                <View key={i} style={styles.blendVoiceBlock}>
+                  <View style={styles.blendVoiceHeader}>
+                    <Text style={[styles.controlLabel, { color: ['#4ecdc4', '#a78bfa', '#f59e0b'][i], marginBottom: 0 }]}>
+                      Voice {i + 1}
+                    </Text>
+                    <View style={styles.blendMuteSoloRow}>
+                      <PrimaryButton
+                        title="M"
+                        variant={voice.muted ? 'filled' : 'ghost'}
+                        onPress={() => toggleBlendMute(i)}
+                        style={styles.blendMuteBtn}
+                      />
+                      <PrimaryButton
+                        title="S"
+                        variant={voice.solo ? 'filled' : 'ghost'}
+                        onPress={() => toggleBlendSolo(i)}
+                        style={styles.blendMuteBtn}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.blendWaveformRow}>
+                    {BLEND_WAVEFORMS.map((w) => (
+                      <PrimaryButton
+                        key={w}
+                        title={BLEND_WAVEFORM_LABELS[w]}
+                        variant={voice.waveform === w ? 'filled' : 'ghost'}
+                        onPress={() => updateBlendVoice(i, { waveform: w })}
+                        style={styles.blendWaveBtn}
+                      />
+                    ))}
+                  </View>
+
+                  <PrimarySlider
+                    label="Freq"
+                    value={voice.frequency}
+                    onValueChange={(v) => updateBlendVoice(i, { frequency: Math.round(v) })}
+                    min={20}
+                    max={2000}
+                    step={1}
+                    formatValue={(v) => `${Math.round(v)} Hz`}
+                  />
+                  <PrimarySlider
+                    label="Volume"
+                    value={voice.volume}
+                    onValueChange={(v) => updateBlendVoice(i, { volume: v })}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    style={styles.slider}
+                  />
+                </View>
+              ))}
+
+              <Text style={styles.noiseHint}>
+                Every complex sound is a combination of simple waveforms. Blend up to three voices to hear how additive synthesis works — the composite waveform below shows the sum. Try the presets for classic timbres, or experiment with close frequencies to hear beating.
               </Text>
             </>
           )}
@@ -1489,6 +1681,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     minWidth: 48,
+  },
+  blendVoiceBlock: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  blendVoiceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  blendMuteSoloRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  blendMuteBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 36,
+  },
+  blendWaveformRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  blendWaveBtn: {
+    flex: 1,
+    paddingVertical: spacing.xs,
   },
   bottomSpacer: {
     height: spacing.xxl,

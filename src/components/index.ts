@@ -19,3 +19,4 @@ export { default as SpectrogramView } from './SpectrogramView';
 export { default as IntervalBeatView } from './IntervalBeatView';
 export { default as JourneyPanel, interpolateBeat, beatForState } from './JourneyPanel';
 export type { JourneyTemplate } from './JourneyPanel';
+export { default as ToneBlendingView } from './ToneBlendingView';

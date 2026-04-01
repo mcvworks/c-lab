@@ -24,3 +24,5 @@ export { IntervalExplorerEngine, INTERVALS, detectInterval } from './IntervalExp
 export { MicrophoneEngine, freqToNote } from './MicrophoneEngine';
 export { GenerativeDriftEngine } from './GenerativeDriftEngine';
 export type { DriftBounds, DriftSpeed, DriftCallbacks } from './GenerativeDriftEngine';
+export { ToneBlendingEngine, BLEND_PRESETS, BLEND_WAVEFORMS, BLEND_WAVEFORM_LABELS } from './ToneBlendingEngine';
+export type { BlendVoice, BlendWaveform, BlendPreset } from './ToneBlendingEngine';
