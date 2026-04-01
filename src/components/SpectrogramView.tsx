@@ -28,15 +28,15 @@ function lerp3(a: [number, number, number], b: [number, number, number], t: numb
   ];
 }
 
-// Build 256-entry lookup table
+// Build 256-entry lookup table — warm ember palette
 const STOPS: { t: number; c: [number, number, number] }[] = [
-  { t: 0.0,  c: [13, 13, 15] },     // near-black (background)
-  { t: 0.15, c: [10, 20, 60] },      // deep navy
-  { t: 0.35, c: [30, 60, 160] },     // blue
-  { t: 0.55, c: [40, 180, 180] },    // cyan
-  { t: 0.75, c: [220, 200, 50] },    // yellow
-  { t: 0.9,  c: [255, 240, 200] },   // warm white
-  { t: 1.0,  c: [255, 255, 255] },   // white
+  { t: 0.0,  c: [26, 22, 18] },      // dark leather (background)
+  { t: 0.15, c: [60, 30, 10] },      // deep brown
+  { t: 0.35, c: [140, 50, 10] },     // burnt sienna
+  { t: 0.55, c: [250, 60, 0] },      // hot orange
+  { t: 0.75, c: [240, 131, 33] },    // amber
+  { t: 0.9,  c: [255, 220, 160] },   // warm cream
+  { t: 1.0,  c: [255, 245, 230] },   // ivory
 ];
 
 for (let i = 0; i < 256; i++) {

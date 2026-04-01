@@ -1,17 +1,26 @@
-import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Screen from '@/src/components/Screen';
 import Card from '@/src/components/Card';
 import HeadphoneTest from '@/src/components/HeadphoneTest';
+import SegmentedControl from '@/src/components/SegmentedControl';
 import { useResponsive } from '@/src/hooks/useResponsive';
 import { useAudioStore } from '@/src/state/useAudioStore';
+import { useThemeStore, type ThemeMode } from '@/src/state/useThemeStore';
 import { getHapticEngine } from '@/src/audio';
-import { colors, spacing, typography } from '@/src/theme';
+import { colors, spacing, typography, useColors } from '@/src/theme';
+
+const THEME_LABELS = ['Dark', 'OLED'] as const;
+const THEME_MAP: Record<string, ThemeMode> = { Dark: 'dark', OLED: 'oled' };
+const THEME_REVERSE: Record<ThemeMode, string> = { dark: 'Dark', oled: 'OLED' };
 
 export default function SettingsScreen() {
   const { isTablet } = useResponsive();
+  const c = useColors();
   const hapticEnabled = useAudioStore((s) => s.hapticEnabled);
   const setHapticEnabled = useAudioStore((s) => s.setHapticEnabled);
   const hapticSupported = Platform.OS !== 'web';
+  const themeMode = useThemeStore((s) => s.mode);
+  const setThemeMode = useThemeStore((s) => s.setMode);
 
   return (
     <Screen>
@@ -29,14 +38,14 @@ export default function SettingsScreen() {
             especially during extended listening sessions. If you experience
             discomfort, ringing, or fatigue, lower the volume or take a break.
           </Text>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Text style={styles.bodyBold}>Headphone use</Text>
           <Text style={styles.body}>
             Binaural beats require stereo headphones to produce the intended
             auditory effect. For the best experience across all features, use
             quality over-ear or in-ear headphones.
           </Text>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Text style={styles.bodyBold}>Volume guidance</Text>
           <Text style={styles.bulletItem}>
             {'\u2022'} Start at a low volume and increase gradually.
@@ -66,13 +75,13 @@ export default function SettingsScreen() {
               value={hapticEnabled}
               onValueChange={setHapticEnabled}
               disabled={!hapticSupported}
-              trackColor={{ false: colors.border, true: colors.accentDim }}
+              trackColor={{ false: c.border, true: colors.accentDim }}
               thumbColor={hapticEnabled ? colors.accent : colors.textMuted}
             />
           </View>
           {!hapticSupported && (
             <>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: c.border }]} />
               <Text style={styles.bodyMuted}>
                 Haptic feedback is not available on this device.
               </Text>
@@ -80,7 +89,7 @@ export default function SettingsScreen() {
           )}
           {hapticSupported && (
             <>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: c.border }]} />
               <Text style={styles.body}>
                 When enabled, low-frequency tones produce a steady vibration, binaural beats pulse rhythmically, and cymatics frequency changes trigger gentle taps.
               </Text>
@@ -97,12 +106,12 @@ export default function SettingsScreen() {
             brain perceives a third tone at the difference between the two
             frequencies.
           </Text>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Text style={styles.body}>
             For example, a 200 Hz tone in the left ear and a 210 Hz tone in the
             right ear produces a perceived 10 Hz binaural beat.
           </Text>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Text style={styles.bodyMuted}>
             Resonance Lab is an exploratory sound tool. It does not make medical,
             therapeutic, or neurological claims. Binaural beats are presented here
@@ -137,10 +146,14 @@ export default function SettingsScreen() {
             <Text style={styles.sectionLabel}>Appearance</Text>
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Theme</Text>
-              <Text style={styles.rowValue}>Dark</Text>
             </View>
+            <SegmentedControl
+              options={THEME_LABELS}
+              selected={THEME_REVERSE[themeMode]}
+              onSelect={(label) => setThemeMode(THEME_MAP[label])}
+            />
             <Text style={styles.footnote}>
-              Additional themes coming in a future update.
+              OLED uses pure black backgrounds for maximum contrast and battery savings on OLED screens.
             </Text>
           </Card>
         </View>
@@ -160,7 +173,7 @@ export default function SettingsScreen() {
             <Text style={styles.rowLabel}>Build</Text>
             <Text style={styles.rowValue}>MVP</Text>
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Text style={styles.bodyMuted}>
             Hear it. See it. Shape it.
           </Text>

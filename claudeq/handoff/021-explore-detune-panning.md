@@ -1,0 +1,23 @@
+# Handoff
+- Task: 021 — Explore: detune, panning, and frequency scale
+- Status: done
+- Summary: Added three new sound controls to the Explore tab: fine-tune detune (cents), stereo panning (L/R balance), and linear/logarithmic frequency scale toggle.
+- Files Changed:
+  - `src/audio/types.ts` — Added `FrequencyScale` type, `detune` and `pan` to `ToneParams`, `NoiseExtraParams` with `pan` for noise mode
+  - `src/audio/ToneGenerator.ts` — Added `StereoPannerNode` in audio chain, oscillator detune support, smooth-ramped pan/detune changes, updated `paramsEqual`
+  - `src/audio/index.ts` — Exported `FrequencyScale` type
+  - `src/state/useAudioStore.ts` — Added `detune`, `pan`, `frequencyScale` state + setters, refactored to `buildParams` helper
+  - `src/types/preset.ts` — Added optional `detune`, `pan`, `frequencyScale` to `ExploreSettings`
+  - `app/(tabs)/explore.tsx` — New UI: detune slider, pan slider with L/R labels, frequency scale toggle (linear/log), log frequency mapping math
+- Commands Run: `npx tsc --noEmit`, `npx expo export --platform web`
+- Testing:
+  - Run `npx expo start --web`, open Explore tab
+  - Verify detune slider shifts pitch audibly in small increments
+  - Verify pan slider moves sound left/right in headphones
+  - Toggle frequency scale to Log — low frequencies should spread out, high frequencies compress
+  - Save a preset with non-zero detune/pan, reload from Library — values should restore
+  - Quick presets should reset detune=0, pan=0
+  - Reset button should clear all new params
+- Blockers: None
+- Next Recommended Task: 022 (harmonics mix)
+- Notes: Pan works for both tone and noise modes. Detune only applies to tone mode (oscillator). Frequency scale is UI-only (doesn't affect audio, just slider behavior). All new preset fields are optional for backward compatibility with existing saved presets.

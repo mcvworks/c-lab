@@ -1,0 +1,21 @@
+# Handoff
+- Task: 025 — Cymatics: dual-frequency interference mode
+- Status: done
+- Summary: Added a dual-frequency mode to the Cymatics tab. When toggled on, a second frequency slider and waveform selector appear. Both frequencies play simultaneously (second oscillator managed via Web Audio) and the sand plate computes interference patterns from both Chladni fields.
+- Files Changed:
+  - `app/(tabs)/cymatics.tsx` — Added dual-freq state (toggle, frequency2, waveform2), second oscillator lifecycle via useRef/AudioContext, UI with Switch toggle + second freq slider + waveform2 selector, "Interference" quick preset, wired into save/reset/badge
+  - `src/components/SandPlateView.tsx` — Added optional `frequency2` and `waveform2` props; `simulateStep` averages gradients from both fields when dual mode active; scatter triggers on freq2 changes
+  - `src/types/preset.ts` — Added optional `dualFreq`, `frequency2`, `waveform2` to `ExploreSettings`
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Cymatics tab
+  - Toggle "Dual Frequency" on in the Frequency card — second freq slider + waveform selector should appear
+  - Press Vibrate — both tones should be audible simultaneously
+  - Adjust second frequency — pattern should change, particles scatter on large changes
+  - Select "Interference" quick preset — should enable dual mode with 440 + 660 Hz
+  - Save a preset with dual-freq on, reload from Library — dual-freq settings should restore
+  - Toggle dual-freq off — second slider disappears, only primary tone plays
+  - Reset button clears dual-freq back to off
+- Blockers: None
+- Next Recommended Task: 026 (cymatics sweep/damping)
+- Notes: Second oscillator uses its own AudioContext to avoid coupling with the shared ToneGenerator. Real-time parameter updates (frequency, waveform, amplitude) are smooth-ramped. Second osc fades out on stop to prevent clicks. Dual-freq fields are optional in ExploreSettings for backward compatibility.

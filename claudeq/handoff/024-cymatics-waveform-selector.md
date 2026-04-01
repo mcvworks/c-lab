@@ -1,0 +1,20 @@
+# Handoff
+- Task: 024 — Cymatics: waveform selector
+- Status: done
+- Summary: Added a waveform selector (sine/square/saw/triangle) to the Cymatics screen. Non-sine waveforms produce visually richer sand plate patterns by blending harmonic mode pairs into the Chladni field computation.
+- Files Changed:
+  - `app/(tabs)/cymatics.tsx` — Added waveform SegmentedControl, wired to audio store, updated quick presets to include waveform, badge shows current waveform, save/reset handles waveform
+  - `src/components/SandPlateView.tsx` — Added optional `waveform` prop, `WAVEFORM_HARMONICS` lookup table, `fieldAt()` now blends harmonic modes for square/saw/triangle, particles scatter on waveform change
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Cymatics tab
+  - Waveform selector should appear in the "Waveform & Plate" section
+  - Select Square — tone should sound buzzy, sand plate pattern should be visually more complex
+  - Select Saw — richer harmonics, even denser pattern
+  - Select Triangle — softer than square, slightly richer than sine
+  - Quick presets "Metal Grid" (square), "Deep Ripple" (triangle), "Buzz Hex" (saw) should set waveform
+  - Save a preset with non-sine waveform, reload from Library — waveform should restore
+  - Reset button should return waveform to sine
+- Blockers: None
+- Next Recommended Task: 025 (cymatics dual frequency)
+- Notes: Harmonic blending uses frequency-mapped mode pairs clamped to 2000 Hz to avoid out-of-range modes. The sine waveform has no harmonic additions, preserving existing behavior as default.

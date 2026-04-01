@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Text as SvgText, Line } from 'react-native-svg';
-import { colors, spacing, typography } from '@/src/theme';
+import { colors, useColors, spacing, typography } from '@/src/theme';
 import type { BlendVoice, BlendWaveform } from '@/src/audio/ToneBlendingEngine';
 
 interface ToneBlendingViewProps {
@@ -14,7 +14,7 @@ interface ToneBlendingViewProps {
   style?: ViewStyle;
 }
 
-const VOICE_COLORS = [colors.accent, colors.highlight, '#f59e0b'];
+const VOICE_COLORS = [colors.accent, colors.highlight, '#D97706'];
 
 /** Generate a waveform path from analyser time-domain data */
 function analyserToPath(analyser: AnalyserNode, width: number, height: number, yOffset: number): string {
@@ -131,6 +131,7 @@ export default function ToneBlendingView({
   isPlaying,
   style,
 }: ToneBlendingViewProps) {
+  const c = useColors();
   const svgRef = useRef<any>(null);
   const pathRefs = useRef<any[]>([null, null, null, null]); // 3 voices + composite
   const rafRef = useRef<number | null>(null);
@@ -190,7 +191,7 @@ export default function ToneBlendingView({
   const compositePath = staticCompositePath(voices, width, compositeHeight, 3 * (voiceHeight + gap));
 
   return (
-    <View style={[{ width, height, backgroundColor: colors.background, borderRadius: 12 }, style]}>
+    <View style={[{ width, height, backgroundColor: c.background, borderRadius: 12 }, style]}>
       <Svg width={width} height={height} ref={svgRef}>
         {/* Divider between voices and composite */}
         <Line
@@ -198,7 +199,7 @@ export default function ToneBlendingView({
           y1={3 * (voiceHeight + gap) - gap / 2}
           x2={width}
           y2={3 * (voiceHeight + gap) - gap / 2}
-          stroke={colors.border}
+          stroke={c.border}
           strokeWidth={1}
           strokeDasharray="4,4"
         />

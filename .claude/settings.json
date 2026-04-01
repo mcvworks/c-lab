@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(grep -l \"StyleSheet\" c:/Users/vigdev/Projects/c-lab/app/\\\\\\(tabs\\\\\\)/*.tsx)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

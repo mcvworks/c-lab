@@ -1,0 +1,17 @@
+# Handoff
+- Task: 048 — Collector UI in Library
+- Status: done
+- Summary: Added a "Discoveries" section to the Library tab showing all 51 catalog frequencies in a grid. Discovered frequencies show name, frequency, category icon, and expand on tap to reveal educational descriptions. Undiscovered frequencies show a "?" placeholder with frequency hint. A progress bar shows X/51 discovered count with percentage, and horizontal filter chips allow filtering by category (All, Solfeggio, Musical, Scientific, Brainwave, Harmonic Series, Cultural).
+- Files Changed:
+  - `app/(tabs)/library.tsx` — added DiscoveriesSection, DiscoveryCard components with category filter, progress bar, and expandable cards
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Open Library tab → scroll past Presets/Snapshots → see Discoveries section
+  - Progress bar shows discovered count out of 51 total
+  - Tap category filter chips to filter by frequency category
+  - Discovered frequency cards show name + Hz + category; tap to expand description
+  - Undiscovered cards show "?" with frequency hint and category label
+- Blockers: none
+- Next Recommended Task: 049 (Discovery Notifications)
+- Notes: Uses 2-column grid layout. Cards use the existing Card component with glowing prop on expanded state.

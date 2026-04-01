@@ -7,10 +7,10 @@ import Animated, {
   runOnJS,
   withSpring,
 } from 'react-native-reanimated';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, radius, spacing, typography, useColors } from '@/src/theme';
 
-const TRACK_HEIGHT = 6;
-const THUMB_SIZE = 22;
+const TRACK_HEIGHT = 8;
+const THUMB_SIZE = 26;
 const SPRING_CONFIG = { damping: 20, stiffness: 300, mass: 0.5 };
 
 interface PrimarySliderProps {
@@ -40,6 +40,7 @@ export default function PrimarySlider({
   style,
   disabled,
 }: PrimarySliderProps) {
+  const c = useColors();
   const trackWidth = useSharedValue(0);
   const thumbScale = useSharedValue(1);
 
@@ -109,7 +110,7 @@ export default function PrimarySlider({
             trackWidth.value = e.nativeEvent.layout.width;
           }}
         >
-          <View style={styles.trackBg} />
+          <View style={[styles.trackBg, { backgroundColor: c.background }]} />
           <View style={[styles.trackFill, { width: `${fraction * 100}%` }]} />
           <Animated.View
             style={[
@@ -154,7 +155,12 @@ const styles = StyleSheet.create({
   trackBg: {
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.background,
+    // Inset groove feel
+    borderTopWidth: 1,
+    borderTopColor: '#0f0d0a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#3d3428',
   },
   trackFill: {
     position: 'absolute',
@@ -167,14 +173,17 @@ const styles = StyleSheet.create({
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    backgroundColor: colors.accent,
+    backgroundColor: '#e0d5c5',
     marginLeft: -THUMB_SIZE / 2,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
+    // Raised knob with 3D shadow
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.6,
+    shadowRadius: 4,
+    elevation: 8,
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: '#c8baa8',
+    borderTopColor: '#f0e8da',
+    borderBottomColor: '#a09080',
   },
 });

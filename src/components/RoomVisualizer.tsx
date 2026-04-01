@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Rect, Ellipse, Path, Circle, Line } from 'react-native-svg';
-import { colors, spacing, radius } from '@/src/theme';
+import { colors, useColors, spacing, radius } from '@/src/theme';
 import type { RoomPreset } from '@/src/audio';
 
 interface RoomVisualizerProps {
@@ -22,16 +22,17 @@ const ROOM_SHAPES: Record<RoomPreset, { type: 'rect' | 'ellipse' | 'path'; d?: s
   box: { type: 'rect', w: 90, h: 90, rx: 2, ry: 2 },
 };
 
-/** Color tint per room */
+/** Color tint per room — warm skeumorphic tones */
 const ROOM_COLORS: Record<RoomPreset, string> = {
-  smallRoom: '#4ecdc4',
-  cathedral: '#a78bfa',
-  cave: '#f59e0b',
-  openAir: '#60a5fa',
-  box: '#f472b6',
+  smallRoom: '#FA3C00',
+  cathedral: '#F08321',
+  cave: '#D97706',
+  openAir: '#c06a18',
+  box: '#b82d00',
 };
 
 export default function RoomVisualizer({ preset, wetDry, isPlaying }: RoomVisualizerProps) {
+  const c = useColors();
   const { width: screenWidth } = useWindowDimensions();
   const contentWidth = screenWidth - spacing.md * 4 - 2;
 
@@ -116,7 +117,7 @@ export default function RoomVisualizer({ preset, wetDry, isPlaying }: RoomVisual
   const shape = ROOM_SHAPES[preset];
 
   return (
-    <View style={[styles.container, { width: contentWidth }]}>
+    <View style={[styles.container, { width: contentWidth, backgroundColor: c.background }]}>
       <Svg width={contentWidth} height={VIZ_HEIGHT} viewBox="0 0 200 120">
         {/* Room shape outline */}
         {shape.type === 'rect' && (

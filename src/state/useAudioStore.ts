@@ -17,6 +17,11 @@ interface AudioState {
   release: number; // envelope release in seconds (0–2)
   isPlaying: boolean;
 
+  // Source tracking for tab bar indicator
+  activeSource: 'explore' | 'cymatics' | 'composer' | 'garden' | null;
+  composerPlaying: boolean;
+  gardenPlaying: boolean;
+
   // Room reverb
   roomEnabled: boolean;
   roomPreset: RoomPreset;
@@ -41,6 +46,9 @@ interface AudioState {
   setRoomPreset: (preset: RoomPreset) => void;
   setRoomWetDry: (value: number) => void;
   setHapticEnabled: (enabled: boolean) => void;
+  setActiveSource: (source: AudioState['activeSource']) => void;
+  setComposerPlaying: (playing: boolean) => void;
+  setGardenPlaying: (playing: boolean) => void;
   play: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -77,6 +85,9 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   attack: 0.05,
   release: 0.1,
   isPlaying: false,
+  activeSource: null,
+  composerPlaying: false,
+  gardenPlaying: false,
   roomEnabled: false,
   roomPreset: 'cathedral' as RoomPreset,
   roomWetDry: 0.3,
@@ -208,6 +219,10 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     }
   },
 
+  setActiveSource: (source) => set({ activeSource: source }),
+  setComposerPlaying: (playing) => set({ composerPlaying: playing }),
+  setGardenPlaying: (playing) => set({ gardenPlaying: playing }),
+
   play: async () => {
     const s = get();
     if (s.sourceMode === 'mic') {
@@ -231,7 +246,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
 
   stop: async () => {
     const s = get();
-    set({ isPlaying: false });
+    set({ isPlaying: false, activeSource: null });
     if (s.sourceMode !== 'mic') {
       await getGenerator().stop();
     }
@@ -257,6 +272,9 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       attack: 0.05,
       release: 0.1,
       isPlaying: false,
+      activeSource: null,
+      composerPlaying: false,
+      gardenPlaying: false,
       roomEnabled: false,
       roomPreset: 'cathedral' as RoomPreset,
       roomWetDry: 0.3,

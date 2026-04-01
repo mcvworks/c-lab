@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, radius, spacing, typography, useColors } from '@/src/theme';
 
 interface SavePresetModalProps {
   visible: boolean;
@@ -22,6 +22,7 @@ export default function SavePresetModal({
   onSave,
   onCancel,
 }: SavePresetModalProps) {
+  const c = useColors();
   const [name, setName] = useState(defaultName);
 
   const handleSave = () => {
@@ -42,12 +43,12 @@ export default function SavePresetModal({
       onRequestClose={handleCancel}
     >
       <Pressable style={styles.overlay} onPress={handleCancel}>
-        <Pressable style={styles.dialog} onPress={() => {}}>
+        <Pressable style={[styles.dialog, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => {}}>
           <Text style={styles.title}>Save Preset</Text>
           <Text style={styles.subtitle}>Give your preset a name</Text>
 
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: c.background, borderColor: c.border }]}
             value={name}
             onChangeText={setName}
             placeholder="My preset"
@@ -59,7 +60,7 @@ export default function SavePresetModal({
 
           <View style={styles.buttonRow}>
             <Pressable
-              style={[styles.button, styles.cancelButton]}
+              style={[styles.button, styles.cancelButton, { backgroundColor: c.surfaceElevated }]}
               onPress={handleCancel}
             >
               <Text style={styles.cancelText}>Cancel</Text>
@@ -68,7 +69,7 @@ export default function SavePresetModal({
               style={[styles.button, styles.saveButton]}
               onPress={handleSave}
             >
-              <Text style={styles.saveText}>Save</Text>
+              <Text style={[styles.saveText, { color: c.background }]}>Save</Text>
             </Pressable>
           </View>
         </Pressable>

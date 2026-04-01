@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, ViewStyle } from 'react-native';
-import { colors, radius, spacing } from '@/src/theme';
+import { colors, radius, spacing, useColors } from '@/src/theme';
 
 interface IconButtonProps {
   children: React.ReactNode;
@@ -23,6 +23,7 @@ export default function IconButton({
   disabled = false,
   style,
 }: IconButtonProps) {
+  const c = useColors();
   return (
     <Pressable
       onPress={onPress}
@@ -31,7 +32,7 @@ export default function IconButton({
         styles.base,
         { width: size, height: size, borderRadius: size / 2 },
         variant === 'filled' && styles.filled,
-        variant === 'outline' && styles.outline,
+        variant === 'outline' && [styles.outline, { borderColor: c.border }],
         pressed && styles.pressed,
         disabled && styles.disabled,
         style,

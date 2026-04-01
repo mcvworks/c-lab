@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
 interface BinauralWaveformViewProps {
   leftFreq: number;
@@ -76,6 +76,7 @@ export default function BinauralWaveformView({
   amplitude,
   isPlaying = false,
 }: BinauralWaveformViewProps) {
+  const c = useColors();
   const { width: screenWidth } = useWindowDimensions();
   const vizWidth = screenWidth - spacing.md * 4 - 2; // account for Card + Screen padding + border
 
@@ -160,7 +161,7 @@ export default function BinauralWaveformView({
   const initialEnvelope = generateEnvelopePath(leftFreq, rightFreq, tw, amplitude, vizWidth, VIZ_HEIGHT, phaseRef.current);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: c.background }]}>
       <View style={styles.svgWrap}>
         <Svg width={vizWidth} height={VIZ_HEIGHT}>
           <Defs>

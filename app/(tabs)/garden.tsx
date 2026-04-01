@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Screen, SectionHeader, PrimarySlider } from '@/src/components';
+import { Alert, GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Screen, SectionHeader } from '@/src/components';
+import RotaryDial from '@/src/components/RotaryDial';
 import { DroneGardenEngine } from '@/src/audio/DroneGardenEngine';
-import { useResponsive } from '@/src/hooks/useResponsive';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { useAudioStore } from '@/src/state/useAudioStore';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
 // ── Frequency mapping: bottom = 60 Hz, top = 800 Hz (log scale) ──
 const FREQ_LO = 60;
@@ -12,7 +13,6 @@ const LOG_LO = Math.log(FREQ_LO);
 const LOG_HI = Math.log(FREQ_HI);
 
 function yToFreq(yFrac: number): number {
-  // yFrac 0 = top = high, 1 = bottom = low
   const t = 1 - yFrac;
   return Math.round(Math.exp(LOG_LO + t * (LOG_HI - LOG_LO)));
 }
@@ -21,10 +21,9 @@ function xToPan(xFrac: number): number {
   return Math.max(-1, Math.min(1, (xFrac - 0.5) * 2));
 }
 
-// ── Visual seed colors based on frequency ──
+// ── Visual seed colors based on frequency (warm skeumorphic palette) ──
 function seedColor(freq: number): string {
   const t = (Math.log(freq) - LOG_LO) / (LOG_HI - LOG_LO);
-  // Low = warm amber, mid = cyan, high = violet
   if (t < 0.33) return colors.warning;
   if (t < 0.66) return colors.accent;
   return colors.highlight;
@@ -32,15 +31,15 @@ function seedColor(freq: number): string {
 
 function seedGlow(freq: number): string {
   const t = (Math.log(freq) - LOG_LO) / (LOG_HI - LOG_LO);
-  if (t < 0.33) return 'rgba(245, 158, 11, 0.3)';
-  if (t < 0.66) return 'rgba(78, 205, 196, 0.3)';
-  return 'rgba(167, 139, 250, 0.3)';
+  if (t < 0.33) return 'rgba(217, 119, 6, 0.3)';
+  if (t < 0.66) return 'rgba(250, 60, 0, 0.3)';
+  return 'rgba(240, 131, 33, 0.3)';
 }
 
 interface SeedState {
   id: string;
-  x: number; // 0–1 fraction
-  y: number; // 0–1 fraction
+  x: number;
+  y: number;
   frequency: number;
   pan: number;
 }
@@ -48,12 +47,13 @@ interface SeedState {
 let nextId = 1;
 
 export default function DroneGardenScreen() {
+  const c = useColors();
   const engineRef = useRef<DroneGardenEngine | null>(null);
   const [seeds, setSeeds] = useState<SeedState[]>([]);
   const [masterVol, setMasterVol] = useState(0.6);
   const [canvasLayout, setCanvasLayout] = useState({ width: 0, height: 0 });
   const canvasRef = useRef<View>(null);
-  const { contentWidth } = useResponsive();
+  const setGardenPlaying = useAudioStore((s) => s.setGardenPlaying);
 
   const getEngine = useCallback(() => {
     if (!engineRef.current) {
@@ -62,30 +62,29 @@ export default function DroneGardenScreen() {
     return engineRef.current;
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
 
-  // Update master volume
   useEffect(() => {
     getEngine().setMasterVolume(masterVol);
   }, [masterVol, getEngine]);
+
+  // Update garden playing state for tab bar indicator
+  useEffect(() => {
+    setGardenPlaying(seeds.length > 0);
+  }, [seeds.length, setGardenPlaying]);
 
   const handleCanvasTap = useCallback(async (e: GestureResponderEvent) => {
     const { width, height } = canvasLayout;
     if (width <= 0 || height <= 0) return;
 
-    // On web, locationX/Y is often relative to the target element which may be
-    // a child — use the raw DOM event's offsetX/Y on currentTarget, or fall back
-    // to clientX/Y minus the canvas bounding rect.
     let lx: number | undefined;
     let ly: number | undefined;
     const rawEvt = (e as any)._dispatchInstances ? undefined : (e.nativeEvent as any);
 
-    // Try getBoundingClientRect on the canvas DOM node (most reliable on web)
     if (canvasRef.current) {
       try {
         const domNode = (canvasRef.current as any) as HTMLElement;
@@ -101,7 +100,6 @@ export default function DroneGardenScreen() {
       } catch { /* not on web */ }
     }
 
-    // Fallback to nativeEvent locationX/Y
     if (lx == null || ly == null || !isFinite(lx) || !isFinite(ly)) {
       lx = e.nativeEvent.locationX ?? 0;
       ly = e.nativeEvent.locationY ?? 0;
@@ -133,142 +131,135 @@ export default function DroneGardenScreen() {
   }, [canvasLayout, getEngine]);
 
   const handleSeedLongPress = useCallback((id: string) => {
-    const engine = getEngine();
-    engine.removeSeed(id);
+    getEngine().removeSeed(id);
     setSeeds((prev) => prev.filter((s) => s.id !== id));
   }, [getEngine]);
 
   const handleClearAll = useCallback(() => {
-    const engine = getEngine();
-    seeds.forEach((s) => engine.removeSeed(s.id));
+    seeds.forEach((s) => getEngine().removeSeed(s.id));
     setSeeds([]);
   }, [seeds, getEngine]);
 
-  const canvasHeight = Math.max(300, canvasLayout.width * 0.75);
-
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false}>
-      <SectionHeader title="Drone Garden" subtitle="Tap to plant tone seeds" />
-
-      {/* Canvas */}
-      <View
-        ref={canvasRef}
-        style={[styles.canvas, { height: canvasHeight }]}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          setCanvasLayout({ width, height });
-        }}
-      >
-        {/* Tap area */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={handleCanvasTap}
-        />
-
-        {/* Frequency guide lines */}
-        {canvasLayout.height > 0 && (
-          <>
-            <View style={[styles.guideLine, { top: '25%' }]} pointerEvents="none">
-              <Text style={styles.guideLabel}>~{yToFreq(0.25)} Hz</Text>
-            </View>
-            <View style={[styles.guideLine, { top: '50%' }]} pointerEvents="none">
-              <Text style={styles.guideLabel}>~{yToFreq(0.5)} Hz</Text>
-            </View>
-            <View style={[styles.guideLine, { top: '75%' }]} pointerEvents="none">
-              <Text style={styles.guideLabel}>~{yToFreq(0.75)} Hz</Text>
-            </View>
-          </>
-        )}
-
-        {/* Pan labels */}
-        <View style={styles.panLabels} pointerEvents="none">
-          <Text style={styles.panLabel}>L</Text>
-          <Text style={styles.panLabel}>R</Text>
+      <View style={styles.root}>
+        {/* Header row */}
+        <View style={styles.headerRow}>
+          <SectionHeader title="Drone Garden" subtitle="Tap to plant tone seeds" />
         </View>
 
-        {/* Seeds */}
-        {seeds.map((seed) => {
-          const left = seed.x * canvasLayout.width - 20;
-          const top = seed.y * canvasLayout.height - 20;
-          const col = seedColor(seed.frequency);
-          const glow = seedGlow(seed.frequency);
-          return (
-            <Pressable
-              key={seed.id}
-              onLongPress={() => handleSeedLongPress(seed.id)}
-              delayLongPress={500}
-              style={[
-                styles.seed,
-                {
-                  left,
-                  top,
-                  backgroundColor: glow,
-                  borderColor: col,
-                  shadowColor: col,
-                },
-              ]}
-            >
-              <View style={[styles.seedCore, { backgroundColor: col }]} />
-              <Text style={styles.seedFreq}>{seed.frequency}</Text>
-            </Pressable>
-          );
-        })}
+        {/* Canvas — fills available space */}
+        <View
+          ref={canvasRef}
+          style={[styles.canvas, { backgroundColor: c.background, borderColor: c.border }]}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            setCanvasLayout({ width, height });
+          }}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleCanvasTap} />
 
-        {/* Empty state hint */}
-        {seeds.length === 0 && (
-          <View style={styles.emptyHint} pointerEvents="none">
-            <Text style={styles.emptyText}>Tap anywhere to plant a tone</Text>
-            <Text style={styles.emptySubtext}>
-              Y = pitch · X = stereo pan
-            </Text>
+          {/* Frequency guide lines */}
+          {canvasLayout.height > 0 && (
+            <>
+              <View style={[styles.guideLine, { top: '25%', backgroundColor: c.border }]} pointerEvents="none">
+                <Text style={styles.guideLabel}>~{yToFreq(0.25)} Hz</Text>
+              </View>
+              <View style={[styles.guideLine, { top: '50%', backgroundColor: c.border }]} pointerEvents="none">
+                <Text style={styles.guideLabel}>~{yToFreq(0.5)} Hz</Text>
+              </View>
+              <View style={[styles.guideLine, { top: '75%', backgroundColor: c.border }]} pointerEvents="none">
+                <Text style={styles.guideLabel}>~{yToFreq(0.75)} Hz</Text>
+              </View>
+            </>
+          )}
+
+          {/* Pan labels */}
+          <View style={styles.panLabels} pointerEvents="none">
+            <Text style={styles.panLabel}>L</Text>
+            <Text style={styles.panLabel}>R</Text>
           </View>
-        )}
+
+          {/* Seeds */}
+          {seeds.map((seed) => {
+            const left = seed.x * canvasLayout.width - 20;
+            const top = seed.y * canvasLayout.height - 20;
+            const col = seedColor(seed.frequency);
+            const glow = seedGlow(seed.frequency);
+            return (
+              <Pressable
+                key={seed.id}
+                onLongPress={() => handleSeedLongPress(seed.id)}
+                delayLongPress={500}
+                style={[
+                  styles.seed,
+                  { left, top, backgroundColor: glow, borderColor: col, shadowColor: col },
+                ]}
+              >
+                <View style={[styles.seedCore, { backgroundColor: col }]} />
+                <Text style={styles.seedFreq}>{seed.frequency}</Text>
+              </Pressable>
+            );
+          })}
+
+          {/* Empty state */}
+          {seeds.length === 0 && (
+            <View style={styles.emptyHint} pointerEvents="none">
+              <Text style={styles.emptyText}>Tap anywhere to plant a tone</Text>
+              <Text style={styles.emptySubtext}>Y = pitch · X = stereo pan</Text>
+            </View>
+          )}
+
+          {/* Overlay: info bar top-right */}
+          <View style={styles.overlayInfo} pointerEvents="box-none">
+            <View style={styles.infoPill}>
+              <Text style={styles.infoText}>
+                {seeds.length} / {getEngine().maxSeeds}
+              </Text>
+            </View>
+            {seeds.length > 0 && (
+              <Pressable onPress={handleClearAll} style={styles.clearPill}>
+                <Text style={styles.clearText}>Clear</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {/* Overlay: volume dial bottom-right */}
+          <View style={styles.overlayDial} pointerEvents="box-none">
+            <RotaryDial
+              label="Vol"
+              value={masterVol}
+              onValueChange={setMasterVol}
+              min={0}
+              max={1}
+              step={0.01}
+              size={48}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+            />
+          </View>
+        </View>
+
+        {/* Hint */}
+        <Text style={styles.hint}>Long-press a seed to remove it</Text>
       </View>
-
-      {/* Info bar */}
-      <View style={styles.infoRow}>
-        <Text style={styles.infoText}>
-          {seeds.length} / {getEngine().maxSeeds} seeds
-        </Text>
-        {seeds.length > 0 && (
-          <Pressable onPress={handleClearAll}>
-            <Text style={styles.clearText}>Clear All</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Master volume */}
-      <View style={styles.controls}>
-        <PrimarySlider
-          label="Master Volume"
-          value={masterVol}
-          onValueChange={setMasterVol}
-          min={0}
-          max={1}
-          step={0.01}
-          formatValue={(v) => `${Math.round(v * 100)}%`}
-        />
-      </View>
-
-      <Text style={styles.hint}>
-        Long-press a seed to remove it. Each seed plays a continuous tone — higher on the canvas means higher pitch, left/right controls stereo panning.
-      </Text>
-
-      <View style={styles.bottomSpacer} />
-      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  headerRow: {
+    paddingHorizontal: spacing.xs,
+  },
   canvas: {
+    flex: 1,
     backgroundColor: colors.background,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    marginHorizontal: spacing.sm,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -339,33 +330,46 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
   },
-  infoRow: {
+  overlayInfo: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  infoPill: {
+    backgroundColor: 'rgba(26, 22, 18, 0.8)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
   },
   infoText: {
-    fontSize: typography.sm,
+    fontSize: typography.xs,
     color: colors.textSecondary,
   },
+  clearPill: {
+    backgroundColor: 'rgba(26, 22, 18, 0.8)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+  },
   clearText: {
-    fontSize: typography.sm,
+    fontSize: typography.xs,
     color: colors.danger,
     fontWeight: typography.semibold,
   },
-  controls: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+  overlayDial: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    backgroundColor: 'rgba(26, 22, 18, 0.85)',
+    borderRadius: radius.lg,
+    padding: spacing.xs,
   },
   hint: {
     fontSize: typography.xs,
     color: colors.textMuted,
-    marginHorizontal: spacing.md,
-    lineHeight: 18,
-  },
-  bottomSpacer: {
-    height: spacing.xxl,
+    textAlign: 'center',
+    paddingVertical: spacing.xs,
   },
 });

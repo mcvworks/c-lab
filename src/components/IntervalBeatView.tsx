@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
-import { colors } from '@/src/theme';
+import { colors, useColors } from '@/src/theme';
 
 interface IntervalBeatViewProps {
   freq1: number;
@@ -27,6 +27,7 @@ export default function IntervalBeatView({
   isPlaying,
   style,
 }: IntervalBeatViewProps) {
+  const c = useColors();
   const combinedPathRef = useRef<Path | null>(null);
   const envelopePathRef = useRef<Path | null>(null);
   const wave1PathRef = useRef<Path | null>(null);
@@ -133,12 +134,12 @@ export default function IntervalBeatView({
   }, [isPlaying, animate]);
 
   return (
-    <View style={[styles.container, { width, height }, style]}>
+    <View style={[styles.container, { width, height, backgroundColor: c.background }, style]}>
       <Svg width={width} height={height}>
         {/* Divider line between top/bottom sections */}
         <Path
           d={`M${pad},${splitY} L${width - pad},${splitY}`}
-          stroke={colors.border}
+          stroke={c.border}
           strokeWidth={0.5}
           opacity={0.5}
         />
@@ -146,13 +147,13 @@ export default function IntervalBeatView({
         {/* Center lines */}
         <Path
           d={`M${pad},${topMid} L${width - pad},${topMid}`}
-          stroke={colors.border}
+          stroke={c.border}
           strokeWidth={0.5}
           opacity={0.3}
         />
         <Path
           d={`M${pad},${botMid} L${width - pad},${botMid}`}
-          stroke={colors.border}
+          stroke={c.border}
           strokeWidth={0.5}
           opacity={0.3}
         />

@@ -1,37 +1,88 @@
 /**
  * Resonance Lab design tokens.
- * Dark-first. Restrained neon/spectral accents on near-black backgrounds.
+ * Dark skeumorphic — warm amber/orange accents, embossed surfaces,
+ * tactile depth on dark brushed-metal backgrounds.
+ *
+ * Two theme modes: 'dark' (default brushed-metal) and 'oled' (true-black).
  */
 
-export const colors = {
-  // Backgrounds
-  background: '#0d0d0f',
-  surface: '#16161a',
-  surfaceElevated: '#1e1e24',
-  border: '#2a2a35',
+import { useThemeStore } from '@/src/state/useThemeStore';
 
+/** Shared accent/text/semantic colors (identical across themes) */
+const shared = {
   // Text
-  textPrimary: '#f0f0f5',
-  textSecondary: '#8888a0',
-  textMuted: '#4a4a60',
+  textPrimary: '#f5efe6',
+  textSecondary: '#a0937e',
+  textMuted: '#6b5f4e',
 
-  // Accent — soft cyan/teal glow
-  accent: '#4ecdc4',
-  accentDim: '#2a8a85',
-  accentGlow: 'rgba(78, 205, 196, 0.15)',
+  // Accent — warm amber/orange
+  accent: '#FA3C00',
+  accentDim: '#b82d00',
+  accentGlow: 'rgba(250, 60, 0, 0.18)',
 
-  // Highlight — soft violet
-  highlight: '#a78bfa',
-  highlightDim: '#6d4fc7',
+  // Highlight — golden amber
+  highlight: '#F08321',
+  highlightDim: '#c06a18',
 
   // Danger/warning
-  warning: '#f59e0b',
-  danger: '#ef4444',
+  warning: '#D97706',
+  danger: '#DC2626',
 
   // Tab bar
-  tabActive: '#4ecdc4',
-  tabInactive: '#4a4a60',
+  tabActive: '#FA3C00',
+  tabInactive: '#6b5f4e',
 } as const;
+
+/** Dark theme — warm brushed-metal surfaces */
+const darkSurfaces = {
+  background: '#1a1612',
+  surface: '#231f1a',
+  surfaceElevated: '#2e2820',
+  border: '#3d3428',
+} as const;
+
+/** OLED theme — true-black with minimal dark-gray surfaces */
+const oledSurfaces = {
+  background: '#000000',
+  surface: '#0A0A0A',
+  surfaceElevated: '#111111',
+  border: '#1a1a1a',
+} as const;
+
+/** Color palette shape — surface values vary by theme */
+export interface AppColors {
+  background: string;
+  surface: string;
+  surfaceElevated: string;
+  border: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  accent: string;
+  accentDim: string;
+  accentGlow: string;
+  highlight: string;
+  highlightDim: string;
+  warning: string;
+  danger: string;
+  tabActive: string;
+  tabInactive: string;
+}
+
+const darkColors: AppColors = { ...shared, ...darkSurfaces };
+const oledColors: AppColors = { ...shared, ...oledSurfaces };
+
+/** Static default — used in module-level StyleSheet.create (dark theme values). */
+export const colors = darkColors;
+
+/**
+ * Reactive color hook — returns the active palette based on theme mode.
+ * Use this inside components to get OLED-aware colors.
+ */
+export function useColors(): AppColors {
+  const mode = useThemeStore((s) => s.mode);
+  return mode === 'oled' ? oledColors : darkColors;
+}
 
 export const spacing = {
   xs: 4,
@@ -43,22 +94,22 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  sm: 6,
+  md: 10,
+  lg: 14,
+  xl: 20,
   full: 9999,
 } as const;
 
 export const typography = {
   // Font sizes
-  xs: 11,
-  sm: 13,
-  md: 15,
-  lg: 17,
-  xl: 20,
-  xxl: 26,
-  display: 34,
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
+  display: 40,
 
   // Font weights
   regular: '400' as const,
@@ -68,12 +119,29 @@ export const typography = {
 } as const;
 
 export const shadow = {
+  // Embossed outward shadow — raised panel feel
   glow: {
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
     elevation: 8,
+  },
+  // Inset-style bevel highlight (top-left light edge)
+  bevelLight: {
+    shadowColor: 'rgba(255, 240, 220, 0.08)',
+    shadowOffset: { width: -1, height: -1 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  // Pressed/inset feel
+  inset: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 2,
   },
 } as const;
 

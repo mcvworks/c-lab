@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { colors } from '@/src/theme';
+import { colors, useColors } from '@/src/theme';
 
 interface LissajousViewProps {
   /** Frequency for X axis (Hz) */
@@ -36,6 +36,7 @@ export default function LissajousView({
   isPlaying,
   style,
 }: LissajousViewProps) {
+  const c = useColors();
   const pathRef = useRef<Path | null>(null);
   const dotRef = useRef<Circle | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -130,12 +131,12 @@ export default function LissajousView({
   }, [freqA, freqB]);
 
   return (
-    <View style={[styles.container, { width, height }, style]}>
+    <View style={[styles.container, { width, height, backgroundColor: c.background }, style]}>
       <Svg width={width} height={height}>
         {/* Crosshair guides */}
         <Path
           d={`M${cx},${padY} L${cx},${height - padY} M${padX},${cy} L${width - padX},${cy}`}
-          stroke={colors.border}
+          stroke={c.border}
           strokeWidth={0.5}
           opacity={0.4}
         />

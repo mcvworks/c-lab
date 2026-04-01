@@ -1,0 +1,21 @@
+# Handoff
+- Task: 029 — Composer: per-layer panning and filter cutoff
+- Status: done
+- Summary: Added per-layer stereo pan and brightness (filter cutoff) controls to the Composer ambient layer system. Each layer now has a StereoPannerNode for stereo positioning and user-controllable BiquadFilter frequency for brightness. Both parameters update smoothly during playback and are included in preset save/load and WAV export rendering.
+- Files Changed:
+  - `src/types/preset.ts` — Added optional `pan` and `filterCutoff` fields to `AmbientLayerSettings`
+  - `src/audio/AmbientGenerator.ts` — Added optional `pan` and `filterCutoff` to `AmbientLayerConfig`. Added `StereoPannerNode` per layer in the audio graph (gain → panner → master). Added `setLayerPan()` and `setLayerFilterCutoff()` methods with smooth ramping. `syncWebLayers()` now also syncs pan and filter cutoff. Added `DEFAULT_CUTOFF` map per ambient type.
+  - `src/audio/exportEngine.ts` — `LayerRenderState` now includes `pan`. `initLayerState()` uses `filterCutoff` to override recipe filter frequency. Ambient mixing loop applies equal-power stereo panning (cos/sin) per layer.
+  - `app/(tabs)/composer.tsx` — Extended `AmbientLayer` interface with `pan` and `filterCutoff`. Added `DEFAULT_CUTOFF` map. Added `updateLayerPan` and `updateLayerFilterCutoff` callbacks with live playback updates. Each layer card now shows Pan slider (-1 L to +1 R) and Brightness slider (200–8000 Hz). Preset save includes pan/filterCutoff. Preset load and quick presets default pan=0 and filterCutoff=type default.
+- Commands Run: `npx tsc --noEmit` (clean)
+- Testing:
+  - Run `npx expo start --web`, open Composer tab
+  - **Pan slider**: Each layer card has a Pan slider. Drag left/right — the ambient sound should shift in stereo. Center reads "Center", extremes read "L 100%" / "R 100%".
+  - **Brightness slider**: Each layer card has a Brightness slider (200–8000 Hz). Lower values = darker/muffled, higher = brighter/sharper. Rain at 200 Hz should sound very muffled; at 8000 Hz should sound crispy.
+  - **Live update**: Both sliders update smoothly during playback (no clicks/pops).
+  - **Type change**: Switching a layer's ambient type resets brightness to that type's default cutoff.
+  - **Save/Load**: Save a preset with custom pan/brightness, reload from Library — values persist.
+  - **Export**: Export WAV with panned/filtered layers — the exported file should reflect the pan positions and brightness settings.
+- Blockers: None
+- Next Recommended Task: 030 (composer session autostop)
+- Notes: Pan uses equal-power panning (cos/sin) in the export engine to match the Web Audio API's StereoPannerNode behavior. Filter cutoff controls the primary BiquadFilter frequency — secondary filters (e.g., forest's lowpass at 6000 Hz) are not affected by the brightness slider to preserve the ambient character.

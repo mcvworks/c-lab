@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Path, Circle as SvgCircle, ClipPath, Defs, RadialGradient, Stop } from 'react-native-svg';
-import { colors } from '@/src/theme';
+import { colors, useColors } from '@/src/theme';
 import type { WaveformType } from '@/src/audio';
 
 type PlateShape = 'circle' | 'square' | 'hexagon';
@@ -25,18 +25,18 @@ interface SandPlateViewProps {
   style?: ViewStyle;
 }
 
-const PARTICLE_COUNT = 600;
+const PARTICLE_COUNT = 1800;
 
 const PARTICLE_COLORS: Record<ParticleStyle, { main: string; dim: string }> = {
-  sand: { main: '#d4a574', dim: '#a07850' },
-  salt: { main: '#e8e8f0', dim: '#b0b0c0' },
-  metal: { main: '#8899aa', dim: '#556677' },
+  sand: { main: '#d4a060', dim: '#a07540' },
+  salt: { main: '#f0e8d8', dim: '#c8baa0' },
+  metal: { main: '#9a8878', dim: '#6b5f4e' },
 };
 
 const PARTICLE_RADIUS: Record<ParticleStyle, number> = {
-  sand: 1.8,
-  salt: 1.4,
-  metal: 2.0,
+  sand: 1.0,
+  salt: 0.8,
+  metal: 1.2,
 };
 
 /** Per-material physics tuning */
@@ -45,9 +45,9 @@ const PARTICLE_PHYSICS: Record<ParticleStyle, {
   attractMultiplier: number;
   vibeMultiplier: number;
 }> = {
-  sand: { damping: 0.88, attractMultiplier: 1.0, vibeMultiplier: 1.0 },
-  salt: { damping: 0.82, attractMultiplier: 1.3, vibeMultiplier: 1.4 },
-  metal: { damping: 0.93, attractMultiplier: 0.6, vibeMultiplier: 0.5 },
+  sand: { damping: 0.94, attractMultiplier: 1.0, vibeMultiplier: 0.5 },
+  salt: { damping: 0.90, attractMultiplier: 1.3, vibeMultiplier: 0.6 },
+  metal: { damping: 0.96, attractMultiplier: 0.6, vibeMultiplier: 0.25 },
 };
 
 /** Chladni plate vibration pattern.
@@ -247,6 +247,7 @@ export default function SandPlateView({
   isFrozen = false,
   style,
 }: SandPlateViewProps) {
+  const c = useColors();
   const size = Math.min(width, height);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
@@ -432,7 +433,7 @@ export default function SandPlateView({
         <Path
           d={outlineD}
           fill="none"
-          stroke={isPlaying ? colors.accent : colors.border}
+          stroke={isPlaying ? colors.accent : c.border}
           strokeWidth={1.5}
           opacity={isPlaying ? 0.8 : 0.5}
         />

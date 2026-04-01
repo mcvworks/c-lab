@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Line, Circle } from 'react-native-svg';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
 interface StringData {
   note: string;
@@ -25,6 +25,7 @@ export default function SympatheticStringsView({
   resonance,
   isPlaying,
 }: SympatheticStringsViewProps) {
+  const c = useColors();
   const { width: screenWidth } = useWindowDimensions();
   const contentWidth = screenWidth - spacing.md * 4 - 2; // Card + Screen padding
   const stringWidth = contentWidth - LABEL_WIDTH - RIGHT_PAD;
@@ -59,8 +60,8 @@ export default function SympatheticStringsView({
       // Glow opacity based on resonance
       const opacity = Math.max(0.15, r);
       const strokeColor = r > 0.1
-        ? `rgba(78, 205, 196, ${opacity.toFixed(2)})`
-        : `rgba(74, 74, 96, 0.4)`;
+        ? `rgba(250, 60, 0, ${opacity.toFixed(2)})`
+        : `rgba(107, 95, 78, 0.4)`;
       line.setNativeProps({ stroke: strokeColor });
       dot.setNativeProps({
         r: (DOT_RADIUS + r * 3).toFixed(1),
@@ -109,7 +110,7 @@ export default function SympatheticStringsView({
   if (contentWidth <= 0) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: c.background }]}>
       {strings.map((s, i) => {
         const r = resonance[i] ?? 0;
         return (

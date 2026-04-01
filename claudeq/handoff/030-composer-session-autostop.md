@@ -1,0 +1,21 @@
+# Handoff
+- Task: 030 — Composer: session timer with auto-stop
+- Status: done
+- Summary: Wired the existing duration setting to actually auto-stop the session. Added a visible countdown timer with elapsed/remaining readout and progress bar during playback. Fade-out begins automatically when remaining time matches the fade-out setting, smoothly ramping both generators' master gains to zero. Session stops when the timer expires.
+- Files Changed:
+  - `src/audio/BinauralGenerator.ts` — Added `fadeOut(durationSec)` method that smoothly ramps masterGain to 0 over the given duration.
+  - `src/audio/AmbientGenerator.ts` — Added matching `fadeOut(durationSec)` method for the ambient master gain.
+  - `app/(tabs)/composer.tsx` — Added `formatTime()` helper, `elapsedSeconds` state, `timerRef` interval, `fadeStartedRef` flag. `toggleSession` now starts a 1-second interval timer on play. A `useEffect` watches elapsed time to trigger fade-out and auto-stop. Added `stopSession` helper used by both manual stop and auto-stop. Timer readout card shows ELAPSED / REMAINING in mm:ss format with a progress bar, visible only during playback. Cleanup effect clears interval on unmount.
+- Commands Run: `npx tsc --noEmit` (clean)
+- Testing:
+  - Run `npx expo start --web`, open Composer tab
+  - **Timer display**: Start a session — timer card appears showing ELAPSED / REMAINING in mm:ss with a progress bar
+  - **Countdown**: Elapsed counts up, remaining counts down, progress bar fills left to right
+  - **Auto-stop**: Set duration to 1 min, start session — session should auto-stop after 60 seconds
+  - **Fade-out**: Set fade-out to 10s, duration to 1 min — at 50s elapsed the audio should begin fading smoothly to silence
+  - **Manual stop**: Press Stop Session at any time — session stops immediately and timer resets
+  - **Timer resets**: After stop (manual or auto), timer disappears and resets to 00:00
+  - **Quick test**: Set duration to 1 min with 5s fade-out for fast verification
+- Blockers: None
+- Next Recommended Task: 031 (composer binaural waveform viz)
+- Notes: The fade-out uses the Web Audio API's linearRampToValueAtTime for a smooth gain ramp — no steps or clicks. The timer uses `setInterval` at 1-second resolution, with `Date.now()` for accuracy (avoids drift from setInterval imprecision). The auto-stop effect runs as a React useEffect watching `elapsedSeconds`, so it naturally fires after each tick. If duration or fade settings are changed mid-session, the effect recalculates immediately.

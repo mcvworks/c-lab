@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 import PrimaryButton from './PrimaryButton';
 import type { BrainState } from '@/src/types/preset';
 
@@ -8,10 +8,10 @@ import type { BrainState } from '@/src/types/preset';
 const BRAIN_STATES: BrainState[] = ['delta', 'theta', 'alpha', 'beta'];
 
 const BRAIN_STATE_INFO: Record<BrainState, { label: string; range: string; hz: [number, number]; color: string }> = {
-  delta: { label: 'Delta', range: '0.5 – 4 Hz', hz: [0.5, 4], color: '#6366f1' },
-  theta: { label: 'Theta', range: '4 – 8 Hz', hz: [4, 8], color: '#8b5cf6' },
-  alpha: { label: 'Alpha', range: '8 – 13 Hz', hz: [8, 13], color: '#4ecdc4' },
-  beta:  { label: 'Beta', range: '13 – 30 Hz', hz: [13, 30], color: '#f59e0b' },
+  delta: { label: 'Delta', range: '0.5 – 4 Hz', hz: [0.5, 4], color: '#8B4513' },
+  theta: { label: 'Theta', range: '4 – 8 Hz', hz: [4, 8], color: '#D97706' },
+  alpha: { label: 'Alpha', range: '8 – 13 Hz', hz: [8, 13], color: '#FA3C00' },
+  beta:  { label: 'Beta', range: '13 – 30 Hz', hz: [13, 30], color: '#F08321' },
 };
 
 /** Get the representative beat frequency for a brain state (midpoint). */
@@ -66,6 +66,7 @@ export default function JourneyPanel({
   onDurationChange,
   onApplyTemplate,
 }: JourneyPanelProps) {
+  const c = useColors();
   const totalSeconds = duration * 60;
   const progress = totalSeconds > 0 ? Math.min(1, elapsedSeconds / totalSeconds) : 0;
   const currentBeat = interpolateBeat(startState, endState, progress);
@@ -159,7 +160,7 @@ export default function JourneyPanel({
         </View>
 
         {/* Gradient bar */}
-        <View style={styles.timelineBar}>
+        <View style={[styles.timelineBar, { backgroundColor: c.surfaceElevated }]}>
           <View
             style={[
               styles.timelineGradientStart,
@@ -189,12 +190,12 @@ export default function JourneyPanel({
 
       {/* Current status readout (during playback) */}
       {isPlaying && (
-        <View style={styles.readout}>
+        <View style={[styles.readout, { backgroundColor: c.background }]}>
           <View style={styles.readoutItem}>
             <Text style={styles.readoutLabel}>CURRENT BEAT</Text>
             <Text style={styles.readoutValue}>{currentBeat.toFixed(1)} Hz</Text>
           </View>
-          <View style={styles.readoutDivider} />
+          <View style={[styles.readoutDivider, { backgroundColor: c.surfaceElevated }]} />
           <View style={styles.readoutItem}>
             <Text style={styles.readoutLabel}>PROGRESS</Text>
             <Text style={styles.readoutValue}>{Math.round(progress * 100)}%</Text>

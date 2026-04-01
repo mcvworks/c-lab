@@ -56,6 +56,16 @@ const styles = StyleSheet.create({
   },
   filled: {
     backgroundColor: colors.accent,
+    // 3D raised button with top highlight
+    borderTopWidth: 1,
+    borderTopColor: '#ff6633',
+    borderBottomWidth: 2,
+    borderBottomColor: '#991f00',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6,
   },
   outline: {
     backgroundColor: 'transparent',
@@ -66,7 +76,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.85,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 2,
+    borderBottomWidth: 1,
   },
   disabled: {
     opacity: 0.4,
@@ -76,7 +91,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.semibold,
   },
   filledText: {
-    color: colors.background,
+    color: '#fff',
   },
   outlineText: {
     color: colors.accent,

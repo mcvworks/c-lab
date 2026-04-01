@@ -1,0 +1,19 @@
+# Handoff
+- Task: 026 — Cymatics: frequency sweep and damping control
+- Status: done
+- Summary: Added auto-sweep mode that scans frequency across a user-defined range, and an exposed damping slider that controls particle settling speed.
+- Files Changed:
+  - `app/(tabs)/cymatics.tsx` — Added sweep state (enabled, start, end, speed, loop), rAF-based sweep loop that increments frequency smoothly with bounce/stop behavior. Added damping state with slider (0.7–0.98) and "Reset to Material Default" button. New "Drifty" quick preset. Sweep/damping wired into save, reset, and quick presets.
+  - `src/components/SandPlateView.tsx` — Added `dampingOverride` prop. When provided, averages with per-material base damping for the simulation step.
+  - `src/types/preset.ts` — Added optional `damping`, `sweepStart`, `sweepEnd`, `sweepSpeed`, `sweepLoop` to `ExploreSettings`.
+- Commands Run: `npx tsc --noEmit`
+- Testing:
+  - Run `npx expo start --web`, open Cymatics tab
+  - **Sweep**: Toggle "Auto-Sweep" on, press Vibrate — frequency should scan between start/end. Adjust speed (Slow/Med/Fast). Toggle Loop off — sweep stops at end. The frequency slider updates in real time.
+  - **Damping**: Drag the Damping slider low (~0.72) — particles snap quickly to nodal lines. Drag high (~0.96) — particles glide with momentum. Press "Reset to Material Default" to clear override.
+  - **Quick preset**: Select "Drifty" — damping should be set high (0.96), particles visibly drift.
+  - Save a preset with sweep+damping settings, reload from Library — settings should persist.
+  - Reset button clears sweep, damping, and all other settings.
+- Blockers: None
+- Next Recommended Task: 027 (composer carrier waveform)
+- Notes: Sweep uses rAF for smooth animation and reads frequency directly from the store to stay in sync. Damping override is averaged with material base (not a direct replacement) so material character is preserved. Sweep direction bounces (ping-pong) when loop is on.

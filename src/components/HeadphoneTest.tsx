@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, radius, spacing, typography, useColors } from '@/src/theme';
 import { StereoTestEngine, StereoTestMode } from '@/src/audio';
 import Card from './Card';
 
@@ -12,6 +12,7 @@ const TESTS: { mode: StereoTestMode; label: string; icon: string; description: s
 ];
 
 export default function HeadphoneTest() {
+  const c = useColors();
   const engineRef = useRef<StereoTestEngine | null>(null);
   const [activeMode, setActiveMode] = useState<StereoTestMode | null>(null);
 
@@ -55,6 +56,7 @@ export default function HeadphoneTest() {
               onPress={() => handlePress(test.mode)}
               style={({ pressed }) => [
                 styles.testButton,
+                { backgroundColor: c.surfaceElevated, borderColor: c.border },
                 isActive && styles.testButtonActive,
                 pressed && !isActive && styles.testButtonPressed,
               ]}
@@ -76,7 +78,7 @@ export default function HeadphoneTest() {
         </Text>
       )}
 
-      <View style={styles.noteRow}>
+      <View style={[styles.noteRow, { borderTopColor: c.border }]}>
         <Text style={styles.noteIcon}>&#x1F3A7;</Text>
         <Text style={styles.noteText}>
           Binaural beats and stereo features require headphones for the intended effect. Speakers will not produce proper channel separation.
