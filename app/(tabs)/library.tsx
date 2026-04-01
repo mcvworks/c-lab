@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Screen from '@/src/components/Screen';
@@ -6,11 +6,21 @@ import Card from '@/src/components/Card';
 import { usePresetStore } from '@/src/state/usePresetStore';
 import { useExportStore } from '@/src/state/useExportStore';
 import { useSnapshotStore } from '@/src/state/useSnapshotStore';
+import { useDiscoveryStore } from '@/src/state/useDiscoveryStore';
 import { useResponsive } from '@/src/hooks/useResponsive';
 import type { Preset, ExportRecord } from '@/src/types/preset';
 import type { ExploreSettings, ComposerSettings } from '@/src/types/preset';
 import type { Snapshot } from '@/src/types/snapshot';
 import { colors, useColors, spacing, typography, radius } from '@/src/theme';
+import {
+  FREQUENCY_CATALOG,
+  CATALOG_BY_SLUG,
+  CATALOG_SIZE,
+  CATEGORY_LABELS,
+  CATEGORY_ICONS,
+  type FrequencyCategory,
+  type CatalogEntry,
+} from '@/src/data/frequencyCatalog';
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -312,6 +322,284 @@ function SnapshotsSection() {
   );
 }
 
+// ── Discoveries Section ──────────────────────────────────────
+
+type CategoryFilter = 'all' | FrequencyCategory;
+
+const FILTER_OPTIONS: CategoryFilter[] = [
+  'all', 'solfeggio', 'musical', 'scientific', 'brainwave', 'harmonic', 'cultural',
+];
+
+const FILTER_LABELS: Record<CategoryFilter, string> = {
+  all: 'All',
+  ...CATEGORY_LABELS,
+};
+
+function DiscoveryCard({ entry, discovered }: { entry: CatalogEntry; discovered: boolean }) {
+  const c = useColors();
+  const [expanded, setExpanded] = useState(false);
+  const icon = CATEGORY_ICONS[entry.category];
+
+  if (!discovered) {
+    return (
+      <Card style={dStyles.card}>
+        <View style={dStyles.undiscoveredContent}>
+          <Text style={[dStyles.undiscoveredIcon, { color: c.border }]}>?</Text>
+          <Text style={[dStyles.undiscoveredFreq, { color: c.textMuted }]}>
+            {entry.frequency >= 1 ? `${Math.round(entry.frequency)} Hz` : `${entry.frequency} Hz`}
+          </Text>
+          <View style={[dStyles.categoryPill, { backgroundColor: c.surfaceElevated }]}>
+            <Text style={[dStyles.categoryPillText, { color: c.textMuted }]}>
+              {icon} {CATEGORY_LABELS[entry.category]}
+            </Text>
+          </View>
+        </View>
+      </Card>
+    );
+  }
+
+  return (
+    <Pressable onPress={() => setExpanded((p) => !p)}>
+      <Card style={dStyles.card} glowing={expanded}>
+        <View style={dStyles.cardHeader}>
+          <Text style={dStyles.cardIcon}>{icon}</Text>
+          <View style={dStyles.cardInfo}>
+            <Text style={dStyles.cardName} numberOfLines={1}>{entry.name}</Text>
+            <Text style={dStyles.cardFreq}>
+              {entry.frequency >= 1 ? `${entry.frequency} Hz` : `${entry.frequency} Hz`}
+            </Text>
+          </View>
+          <View style={[dStyles.categoryPill, { backgroundColor: c.surfaceElevated }]}>
+            <Text style={[dStyles.categoryPillText, { color: c.textSecondary }]}>
+              {CATEGORY_LABELS[entry.category]}
+            </Text>
+          </View>
+        </View>
+        {expanded && (
+          <View style={[dStyles.descriptionBox, { borderTopColor: c.border }]}>
+            <Text style={dStyles.descriptionText}>{entry.description}</Text>
+          </View>
+        )}
+      </Card>
+    </Pressable>
+  );
+}
+
+function DiscoveriesSection() {
+  const { discoveries, loaded, load } = useDiscoveryStore();
+  const c = useColors();
+  const [filter, setFilter] = useState<CategoryFilter>('all');
+
+  useEffect(() => {
+    if (!loaded) load();
+  }, [loaded, load]);
+
+  const discoveredSlugs = useMemo(
+    () => new Set(discoveries.map((d) => d.slug)),
+    [discoveries],
+  );
+
+  const filteredEntries = useMemo(
+    () => filter === 'all'
+      ? FREQUENCY_CATALOG
+      : FREQUENCY_CATALOG.filter((e) => e.category === filter),
+    [filter],
+  );
+
+  const discoveredCount = discoveredSlugs.size;
+  const progressRatio = CATALOG_SIZE > 0 ? discoveredCount / CATALOG_SIZE : 0;
+
+  return (
+    <View style={dStyles.section}>
+      <Text style={styles.sectionTitle}>Discoveries</Text>
+
+      {/* Progress bar */}
+      <View style={[dStyles.progressContainer, { backgroundColor: c.surfaceElevated }]}>
+        <View style={dStyles.progressRow}>
+          <Text style={dStyles.progressLabel}>
+            {discoveredCount} / {CATALOG_SIZE} frequencies discovered
+          </Text>
+          <Text style={dStyles.progressPercent}>
+            {Math.round(progressRatio * 100)}%
+          </Text>
+        </View>
+        <View style={[dStyles.progressTrack, { backgroundColor: c.background }]}>
+          <View style={[dStyles.progressFill, { width: `${Math.round(progressRatio * 100)}%` }]} />
+        </View>
+      </View>
+
+      {/* Category filter */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={dStyles.filterScroll}
+        contentContainerStyle={dStyles.filterRow}
+      >
+        {FILTER_OPTIONS.map((opt) => {
+          const active = opt === filter;
+          return (
+            <Pressable
+              key={opt}
+              onPress={() => setFilter(opt)}
+              style={[
+                dStyles.filterChip,
+                { backgroundColor: active ? c.accent : c.surfaceElevated },
+              ]}
+            >
+              <Text style={[
+                dStyles.filterChipText,
+                { color: active ? '#fff' : c.textSecondary },
+                active && { fontWeight: typography.semibold },
+              ]}>
+                {FILTER_LABELS[opt]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Frequency cards grid */}
+      <View style={dStyles.grid}>
+        {filteredEntries.map((entry) => (
+          <View key={entry.slug} style={dStyles.gridCell}>
+            <DiscoveryCard
+              entry={entry}
+              discovered={discoveredSlugs.has(entry.slug)}
+            />
+          </View>
+        ))}
+      </View>
+
+      {filteredEntries.length === 0 && (
+        <Card style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>No frequencies in this category</Text>
+        </Card>
+      )}
+    </View>
+  );
+}
+
+const dStyles = StyleSheet.create({
+  section: {
+    marginTop: spacing.lg,
+  },
+  progressContainer: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  progressLabel: {
+    fontSize: typography.sm,
+    fontWeight: typography.medium,
+    color: colors.textSecondary,
+  },
+  progressPercent: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: colors.accent,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+  },
+  filterScroll: {
+    marginBottom: spacing.md,
+  },
+  filterRow: {
+    gap: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.full,
+  },
+  filterChipText: {
+    fontSize: typography.sm,
+    fontWeight: typography.medium,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -spacing.xs,
+  },
+  gridCell: {
+    width: '50%',
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  card: {
+    marginBottom: 0,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  cardIcon: {
+    fontSize: typography.lg,
+    color: colors.accent,
+  },
+  cardInfo: {
+    flex: 1,
+  },
+  cardName: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+  },
+  cardFreq: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  categoryPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  categoryPillText: {
+    fontSize: 10,
+    fontWeight: typography.medium,
+  },
+  undiscoveredContent: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  undiscoveredIcon: {
+    fontSize: typography.xxl,
+    fontWeight: typography.bold,
+    marginBottom: spacing.xs,
+  },
+  undiscoveredFreq: {
+    fontSize: typography.xs,
+    marginBottom: spacing.xs,
+  },
+  descriptionBox: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  descriptionText: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+});
+
 function ExportsSection() {
   const { exports: exportRecords, loaded, loadExports } = useExportStore();
 
@@ -359,7 +647,7 @@ export default function LibraryScreen() {
     <Screen>
       <View style={styles.header}>
         <Text style={styles.title}>Library</Text>
-        <Text style={styles.subtitle}>Presets, snapshots & exports</Text>
+        <Text style={styles.subtitle}>Presets, snapshots, discoveries & exports</Text>
       </View>
 
       {presets.length === 0 ? (
@@ -372,6 +660,7 @@ export default function LibraryScreen() {
             </Text>
           </Card>
           <SnapshotsSection />
+          <DiscoveriesSection />
           <ExportsSection />
         </ScrollView>
       ) : (
@@ -383,7 +672,7 @@ export default function LibraryScreen() {
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<><SnapshotsSection /><ExportsSection /></>}
+          ListFooterComponent={<><SnapshotsSection /><DiscoveriesSection /><ExportsSection /></>}
         />
       )}
     </Screen>
