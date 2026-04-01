@@ -22,3 +22,5 @@ export { DroneGardenEngine } from './DroneGardenEngine';
 export type { Seed as DroneGardenSeed } from './DroneGardenEngine';
 export { IntervalExplorerEngine, INTERVALS, detectInterval } from './IntervalExplorerEngine';
 export { MicrophoneEngine, freqToNote } from './MicrophoneEngine';
+export { GenerativeDriftEngine } from './GenerativeDriftEngine';
+export type { DriftBounds, DriftSpeed, DriftCallbacks } from './GenerativeDriftEngine';

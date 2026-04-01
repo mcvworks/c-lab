@@ -25,7 +25,8 @@ import {
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
-import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote } from '@/src/audio';
+import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote, GenerativeDriftEngine } from '@/src/audio';
+import type { DriftBounds, DriftSpeed } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -62,6 +63,14 @@ const NOTE_PRESETS = [
   { label: 'E4', freq: 329.63 },
   { label: 'G4', freq: 392 },
 ] as const;
+
+// ── Drift speed options ──────────────────────────────────────────────
+const DRIFT_SPEEDS = ['slow', 'medium', 'fast'] as const;
+const DRIFT_SPEED_LABELS: Record<DriftSpeed, string> = {
+  slow: 'Slow',
+  medium: 'Med',
+  fast: 'Fast',
+};
 
 // ── Logarithmic frequency mapping ──────────────────────────────────
 const LOG_MIN = Math.log(20);
@@ -453,6 +462,77 @@ export default function ExploreScreen() {
   useEffect(() => {
     return () => {
       stringsEngineRef.current?.dispose();
+    };
+  }, []);
+
+  // ── Generative Drift ─────────────────────────────────────────────
+  const [driftEnabled, setDriftEnabled] = useState(false);
+  const [driftSpeed, setDriftSpeed] = useState<DriftSpeed>('medium');
+  const [driftBreathing, setDriftBreathing] = useState(false);
+  const [driftFreqMin, setDriftFreqMin] = useState(200);
+  const [driftFreqMax, setDriftFreqMax] = useState(400);
+  const [driftAmpMin, setDriftAmpMin] = useState(0.3);
+  const [driftAmpMax, setDriftAmpMax] = useState(0.6);
+  const [driftPanMin, setDriftPanMin] = useState(-0.5);
+  const [driftPanMax, setDriftPanMax] = useState(0.5);
+  const driftEngineRef = useRef<GenerativeDriftEngine | null>(null);
+
+  const getDriftEngine = useCallback(() => {
+    if (!driftEngineRef.current) {
+      driftEngineRef.current = new GenerativeDriftEngine();
+    }
+    return driftEngineRef.current;
+  }, []);
+
+  const driftBounds: DriftBounds = useMemo(() => ({
+    freqMin: driftFreqMin,
+    freqMax: driftFreqMax,
+    ampMin: driftAmpMin,
+    ampMax: driftAmpMax,
+    panMin: driftPanMin,
+    panMax: driftPanMax,
+  }), [driftFreqMin, driftFreqMax, driftAmpMin, driftAmpMax, driftPanMin, driftPanMax]);
+
+  // Start/stop drift with playback
+  useEffect(() => {
+    const engine = getDriftEngine();
+    if (isPlaying && driftEnabled && sourceMode === 'tone') {
+      engine.start(driftBounds, driftSpeed, driftBreathing, {
+        setFrequency,
+        setAmplitude,
+        setPan,
+      });
+    } else {
+      engine.stop();
+    }
+  }, [isPlaying, driftEnabled, sourceMode, getDriftEngine, driftBounds, driftSpeed, driftBreathing, setFrequency, setAmplitude, setPan]);
+
+  // Live-update bounds, speed, and breathing while running
+  useEffect(() => {
+    const engine = getDriftEngine();
+    if (engine.isActive()) {
+      engine.updateBounds(driftBounds);
+    }
+  }, [driftBounds, getDriftEngine]);
+
+  useEffect(() => {
+    const engine = getDriftEngine();
+    if (engine.isActive()) {
+      engine.updateSpeed(driftSpeed);
+    }
+  }, [driftSpeed, getDriftEngine]);
+
+  useEffect(() => {
+    const engine = getDriftEngine();
+    if (engine.isActive()) {
+      engine.updateBreathing(driftBreathing);
+    }
+  }, [driftBreathing, getDriftEngine]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      driftEngineRef.current?.dispose();
     };
   }, []);
 
@@ -1091,6 +1171,113 @@ export default function ExploreScreen() {
                   />
                   <Text style={styles.noiseHint}>
                     Virtual strings resonate when your tone matches their tuning. Harmonics of the played frequency also excite nearby strings.
+                  </Text>
+                </>
+              )}
+            </Card>
+          </>
+        )}
+
+        {/* Generative Drift — tone mode only */}
+        {sourceMode === 'tone' && (
+          <>
+            <SectionHeader title="GENERATIVE DRIFT" label />
+            <Card style={styles.card}>
+              <View style={styles.stringsHeaderRow}>
+                <Text style={styles.controlLabel}>Drift Mode</Text>
+                <PrimaryButton
+                  title={driftEnabled ? 'ON' : 'OFF'}
+                  variant={driftEnabled ? 'filled' : 'ghost'}
+                  onPress={() => setDriftEnabled((v) => !v)}
+                  style={styles.stringsToggle}
+                />
+              </View>
+
+              {driftEnabled && (
+                <>
+                  <Text style={[styles.controlLabel, { marginTop: spacing.md }]}>Speed</Text>
+                  <SegmentedControl
+                    options={DRIFT_SPEEDS}
+                    selected={driftSpeed}
+                    onSelect={setDriftSpeed}
+                    labels={DRIFT_SPEED_LABELS}
+                  />
+
+                  <View style={[styles.stringsHeaderRow, { marginTop: spacing.lg }]}>
+                    <Text style={styles.controlLabel}>Breathing</Text>
+                    <PrimaryButton
+                      title={driftBreathing ? 'ON' : 'OFF'}
+                      variant={driftBreathing ? 'filled' : 'ghost'}
+                      onPress={() => setDriftBreathing((v) => !v)}
+                      style={styles.stringsToggle}
+                    />
+                  </View>
+
+                  <PrimarySlider
+                    label="Freq Min"
+                    value={driftFreqMin}
+                    onValueChange={(v) => setDriftFreqMin(Math.round(v))}
+                    min={20}
+                    max={2000}
+                    step={1}
+                    formatValue={(v) => `${Math.round(v)} Hz`}
+                    style={styles.slider}
+                  />
+                  <PrimarySlider
+                    label="Freq Max"
+                    value={driftFreqMax}
+                    onValueChange={(v) => setDriftFreqMax(Math.round(v))}
+                    min={20}
+                    max={2000}
+                    step={1}
+                    formatValue={(v) => `${Math.round(v)} Hz`}
+                    style={styles.slider}
+                  />
+
+                  <PrimarySlider
+                    label="Amp Min"
+                    value={driftAmpMin}
+                    onValueChange={setDriftAmpMin}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    style={styles.slider}
+                  />
+                  <PrimarySlider
+                    label="Amp Max"
+                    value={driftAmpMax}
+                    onValueChange={setDriftAmpMax}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    style={styles.slider}
+                  />
+
+                  <PrimarySlider
+                    label="Pan Min"
+                    value={driftPanMin}
+                    onValueChange={setDriftPanMin}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    formatValue={(v) => v === 0 ? 'Center' : v < 0 ? `${Math.round(Math.abs(v) * 100)}% L` : `${Math.round(v * 100)}% R`}
+                    style={styles.slider}
+                  />
+                  <PrimarySlider
+                    label="Pan Max"
+                    value={driftPanMax}
+                    onValueChange={setDriftPanMax}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    formatValue={(v) => v === 0 ? 'Center' : v < 0 ? `${Math.round(Math.abs(v) * 100)}% L` : `${Math.round(v * 100)}% R`}
+                    style={styles.slider}
+                  />
+
+                  <Text style={styles.noiseHint}>
+                    Drift mode slowly wanders frequency, amplitude, and pan within the ranges you set. Enable Breathing for a gentle sine-wave pulsing on volume. All changes are smooth and click-free — ideal for ambient background listening.
                   </Text>
                 </>
               )}
