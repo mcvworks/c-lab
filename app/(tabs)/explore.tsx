@@ -25,7 +25,7 @@ import {
 import type { QuickPreset } from '@/src/components';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
-import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval } from '@/src/audio';
+import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote } from '@/src/audio';
 
 const WAVEFORMS = ['sine', 'square', 'saw', 'triangle'] as const;
 
@@ -43,10 +43,11 @@ const NOISE_LABELS: Record<NoiseType, string> = {
   brown: 'Brown',
 };
 
-const SOURCE_MODES = ['tone', 'noise'] as const;
+const SOURCE_MODES = ['tone', 'noise', 'mic'] as const;
 const SOURCE_MODE_LABELS: Record<SourceMode, string> = {
   tone: 'Tone',
   noise: 'Noise',
+  mic: 'Mic',
 };
 
 const FREQ_SCALE_OPTIONS = ['linear', 'log'] as const;
@@ -301,6 +302,90 @@ export default function ExploreScreen() {
     };
   }, []);
 
+  // ── Microphone Input ─────────────────────────────────────────────
+  const micEngineRef = useRef<MicrophoneEngine | null>(null);
+  const [micAnalyser, setMicAnalyser] = useState<AnalyserNode | null>(null);
+  const [micFreq, setMicFreq] = useState<number | null>(null);
+  const [micNote, setMicNote] = useState<string | null>(null);
+  const [micError, setMicError] = useState<string | null>(null);
+  const micPitchRafRef = useRef<number | null>(null);
+
+  const getMicEngine = useCallback(() => {
+    if (!micEngineRef.current) {
+      micEngineRef.current = new MicrophoneEngine();
+    }
+    return micEngineRef.current;
+  }, []);
+
+  // Start/stop mic based on playback + source mode
+  useEffect(() => {
+    const engine = getMicEngine();
+    if (isPlaying && sourceMode === 'mic') {
+      if (!engine.isActive()) {
+        setMicError(null);
+        engine.start().then(() => {
+          setMicAnalyser(engine.getAnalyser());
+        }).catch((err) => {
+          setMicError(err?.message || 'Microphone access denied');
+          setMicAnalyser(null);
+        });
+      }
+    } else {
+      if (engine.isActive()) {
+        engine.stop();
+        setMicAnalyser(null);
+        setMicFreq(null);
+        setMicNote(null);
+      }
+    }
+  }, [isPlaying, sourceMode, getMicEngine]);
+
+  // Pitch detection loop while mic is active
+  useEffect(() => {
+    if (!micAnalyser) {
+      if (micPitchRafRef.current != null) {
+        cancelAnimationFrame(micPitchRafRef.current);
+        micPitchRafRef.current = null;
+      }
+      return;
+    }
+
+    const engine = getMicEngine();
+    let frameCount = 0;
+
+    const tick = () => {
+      frameCount++;
+      // Detect pitch every ~6 frames (~10 Hz) to avoid excessive computation
+      if (frameCount % 6 === 0) {
+        const freq = engine.getDominantFrequency();
+        setMicFreq(freq);
+        if (freq) {
+          const note = freqToNote(freq);
+          setMicNote(note ? `${note.name}${note.octave} ${note.cents >= 0 ? '+' : ''}${note.cents}¢` : null);
+        } else {
+          setMicNote(null);
+        }
+      }
+      micPitchRafRef.current = requestAnimationFrame(tick);
+    };
+
+    micPitchRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (micPitchRafRef.current != null) {
+        cancelAnimationFrame(micPitchRafRef.current);
+        micPitchRafRef.current = null;
+      }
+    };
+  }, [micAnalyser, getMicEngine]);
+
+  // Cleanup mic on unmount
+  useEffect(() => {
+    return () => {
+      micEngineRef.current?.dispose();
+    };
+  }, []);
+
   const beatFreq = Math.abs(intervalFreq1 - intervalFreq2);
   const intervalName = useMemo(() => detectInterval(intervalFreq1, intervalFreq2), [intervalFreq1, intervalFreq2]);
 
@@ -393,7 +478,9 @@ export default function ExploreScreen() {
     setFrequency(logToFreq(t));
   }, [setFrequency]);
 
-  const vizBadge = sourceMode === 'noise'
+  const vizBadge = sourceMode === 'mic'
+    ? (micFreq ? `${Math.round(micFreq)} Hz` : 'Listening...')
+    : sourceMode === 'noise'
     ? `${NOISE_LABELS[noiseType]} noise`
     : `${WAVEFORM_LABELS[waveform]} · ${Math.round(frequency)} Hz`;
 
@@ -427,6 +514,7 @@ export default function ExploreScreen() {
                 height={vizHeight}
                 isPlaying={isPlaying}
                 noiseType={sourceMode === 'noise' ? noiseType : null}
+                analyserNode={sourceMode === 'mic' ? micAnalyser : null}
               />
             </View>
           </Card>
@@ -434,7 +522,7 @@ export default function ExploreScreen() {
           <Card style={[styles.vizCard, isTablet && styles.tabletHalf]} glowing={isPlaying}>
             <View style={styles.vizHeader}>
               <Text style={styles.vizTitle}>Spectrum</Text>
-              <Text style={styles.vizBadge}>{Math.round(amplitude * 100)}% level</Text>
+              <Text style={styles.vizBadge}>{sourceMode === 'mic' ? (micNote || 'Listening...') : `${Math.round(amplitude * 100)}% level`}</Text>
             </View>
             <View style={styles.vizContainer}>
               <SpectrumView
@@ -444,6 +532,7 @@ export default function ExploreScreen() {
                 height={vizHeight}
                 isPlaying={isPlaying}
                 noiseType={sourceMode === 'noise' ? noiseType : null}
+                analyserNode={sourceMode === 'mic' ? micAnalyser : null}
               />
             </View>
           </Card>
@@ -463,6 +552,7 @@ export default function ExploreScreen() {
               height={vizHeight * 1.5}
               isPlaying={isPlaying}
               noiseType={sourceMode === 'noise' ? noiseType : null}
+              analyserNode={sourceMode === 'mic' ? micAnalyser : null}
             />
           </View>
         </Card>
@@ -809,7 +899,7 @@ export default function ExploreScreen() {
               )}
             </Card>
           </>
-        ) : (
+        ) : sourceMode === 'noise' ? (
           <>
             <SectionHeader title="NOISE CONTROLS" label />
             <Card style={styles.card}>
@@ -839,55 +929,84 @@ export default function ExploreScreen() {
               </Text>
             </Card>
           </>
+        ) : (
+          <>
+            <SectionHeader title="MICROPHONE" label />
+            <Card style={styles.card}>
+              {isPlaying && micAnalyser && (
+                <View style={styles.micActiveRow}>
+                  <View style={styles.micDot} />
+                  <Text style={styles.micActiveLabel}>Microphone active</Text>
+                </View>
+              )}
+
+              {micError && (
+                <Text style={[styles.noiseHint, { color: '#f87171' }]}>
+                  {micError}
+                </Text>
+              )}
+
+              {isPlaying && micAnalyser && micFreq != null && (
+                <View style={styles.micPitchRow}>
+                  <Text style={styles.micPitchFreq}>{Math.round(micFreq)} Hz</Text>
+                  {micNote && <Text style={styles.micPitchNote}>{micNote}</Text>}
+                </View>
+              )}
+
+              <Text style={styles.noiseHint}>
+                Microphone mode captures live audio from your device and feeds it into the visualizations. No audio is played back through the speakers — this mode is for visualization only.{'\n\n'}Try whistling, humming, or playing an instrument to see the waveform, spectrum, and spectrogram respond in real time.
+              </Text>
+            </Card>
+          </>
         )}
 
-        {/* Stereo Pan — shared by tone and noise */}
-        <SectionHeader title="STEREO" label />
-        <Card style={styles.card}>
-          <PrimarySlider
-            label="Pan"
-            value={pan}
-            onValueChange={setPan}
-            min={-1}
-            max={1}
-            step={0.01}
-            formatValue={() => panLabel}
-          />
-          <View style={styles.panLabels}>
-            <Text style={styles.panEndLabel}>L</Text>
-            <Text style={styles.panEndLabel}>R</Text>
-          </View>
-        </Card>
+        {/* Stereo Pan, Envelope, Space — hidden in mic mode */}
+        {sourceMode !== 'mic' && (
+          <>
+            <SectionHeader title="STEREO" label />
+            <Card style={styles.card}>
+              <PrimarySlider
+                label="Pan"
+                value={pan}
+                onValueChange={setPan}
+                min={-1}
+                max={1}
+                step={0.01}
+                formatValue={() => panLabel}
+              />
+              <View style={styles.panLabels}>
+                <Text style={styles.panEndLabel}>L</Text>
+                <Text style={styles.panEndLabel}>R</Text>
+              </View>
+            </Card>
 
-        {/* Envelope */}
-        <SectionHeader title="ENVELOPE" label />
-        <Card style={styles.card}>
-          <PrimarySlider
-            label="Attack"
-            value={attack}
-            onValueChange={setAttack}
-            min={0}
-            max={2}
-            step={0.01}
-            formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
-          />
-          <PrimarySlider
-            label="Release"
-            value={release}
-            onValueChange={setRelease}
-            min={0}
-            max={2}
-            step={0.01}
-            formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
-            style={styles.slider}
-          />
-          <Text style={styles.noiseHint}>
-            Attack fades in on play. Release fades out on stop. Small values feel snappy; larger values create smooth transitions.
-          </Text>
-        </Card>
+            <SectionHeader title="ENVELOPE" label />
+            <Card style={styles.card}>
+              <PrimarySlider
+                label="Attack"
+                value={attack}
+                onValueChange={setAttack}
+                min={0}
+                max={2}
+                step={0.01}
+                formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+              />
+              <PrimarySlider
+                label="Release"
+                value={release}
+                onValueChange={setRelease}
+                min={0}
+                max={2}
+                step={0.01}
+                formatValue={(v) => v < 0.01 ? '0 s' : `${v.toFixed(2)} s`}
+                style={styles.slider}
+              />
+              <Text style={styles.noiseHint}>
+                Attack fades in on play. Release fades out on stop. Small values feel snappy; larger values create smooth transitions.
+              </Text>
+            </Card>
 
-        {/* Room / Space Reverb */}
-        <SectionHeader title="SPACE" label />
+            <SectionHeader title="SPACE" label />
         <Card style={styles.card}>
           <View style={styles.stringsHeaderRow}>
             <Text style={styles.controlLabel}>Room Reverb</Text>
@@ -935,6 +1054,8 @@ export default function ExploreScreen() {
             </>
           )}
         </Card>
+          </>
+        )}
 
         {/* Sympathetic Strings — tone mode only */}
         {sourceMode === 'tone' && (
@@ -980,7 +1101,7 @@ export default function ExploreScreen() {
         {/* Playback Controls */}
         <View style={styles.buttonRow}>
           <PrimaryButton
-            title={isPlaying ? 'Playing...' : sourceMode === 'noise' ? 'Play Noise' : 'Play Tone'}
+            title={isPlaying ? (sourceMode === 'mic' ? 'Listening...' : 'Playing...') : sourceMode === 'mic' ? 'Start Mic' : sourceMode === 'noise' ? 'Play Noise' : 'Play Tone'}
             onPress={handlePlay}
             style={styles.buttonFlex}
           />
@@ -1184,5 +1305,38 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: spacing.xxl,
+  },
+  micActiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  micDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+  },
+  micActiveLabel: {
+    fontSize: typography.sm,
+    fontWeight: typography.semibold,
+    color: '#ef4444',
+  },
+  micPitchRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  micPitchFreq: {
+    fontSize: 28,
+    fontWeight: typography.bold,
+    color: colors.accent,
+  },
+  micPitchNote: {
+    fontSize: typography.lg,
+    fontWeight: typography.semibold,
+    color: colors.textSecondary,
   },
 });

@@ -184,6 +184,11 @@ export const useAudioStore = create<AudioState>((set, get) => ({
 
   play: async () => {
     const s = get();
+    if (s.sourceMode === 'mic') {
+      // Mic mode is managed externally; just set isPlaying flag
+      set({ isPlaying: true });
+      return;
+    }
     const gen = getGenerator();
     await gen.play(buildParams(s));
     // Apply room reverb after play ensures AudioContext is initialized
@@ -195,8 +200,11 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   },
 
   stop: async () => {
+    const s = get();
     set({ isPlaying: false });
-    await getGenerator().stop();
+    if (s.sourceMode !== 'mic') {
+      await getGenerator().stop();
+    }
   },
 
   reset: () => {

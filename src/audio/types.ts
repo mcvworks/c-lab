@@ -1,6 +1,6 @@
 export type WaveformType = 'sine' | 'square' | 'saw' | 'triangle';
 export type NoiseType = 'white' | 'pink' | 'brown';
-export type SourceMode = 'tone' | 'noise';
+export type SourceMode = 'tone' | 'noise' | 'mic';
 
 export type FrequencyScale = 'linear' | 'log';
 

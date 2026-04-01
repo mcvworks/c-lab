@@ -12,6 +12,7 @@ interface SpectrumViewProps {
   height: number;
   isPlaying?: boolean;
   noiseType?: NoiseType | null;
+  analyserNode?: AnalyserNode | null;
   style?: ViewStyle;
 }
 
@@ -86,6 +87,24 @@ function generateNoiseSpectrum(
   return bars;
 }
 
+/** Generate spectrum bars from real analyser frequency data */
+function generateAnalyserSpectrum(analyser: AnalyserNode): number[] {
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const bars: number[] = [];
+  const binCount = freqData.length;
+  const binsPerBar = Math.floor(binCount / BAR_COUNT);
+  for (let i = 0; i < BAR_COUNT; i++) {
+    let sum = 0;
+    const start = i * binsPerBar;
+    for (let j = start; j < start + binsPerBar && j < binCount; j++) {
+      sum += freqData[j];
+    }
+    bars.push((sum / binsPerBar) / 255);
+  }
+  return bars;
+}
+
 export default function SpectrumView({
   frequency,
   amplitude,
@@ -93,6 +112,7 @@ export default function SpectrumView({
   height,
   isPlaying = false,
   noiseType = null,
+  analyserNode = null,
   style,
 }: SpectrumViewProps) {
   const barRefs = useRef<(Rect | null)[]>([]);
@@ -100,18 +120,23 @@ export default function SpectrumView({
   const seedRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
 
-  const propsRef = useRef({ frequency, amplitude, width, height, noiseType });
-  propsRef.current = { frequency, amplitude, width, height, noiseType };
+  const propsRef = useRef({ frequency, amplitude, width, height, noiseType, analyserNode });
+  propsRef.current = { frequency, amplitude, width, height, noiseType, analyserNode };
 
   const updateBars = useCallback((seed: number) => {
-    const { frequency: f, amplitude: a, width: w, height: h, noiseType: nt } = propsRef.current;
+    const { frequency: f, amplitude: a, width: w, height: h, noiseType: nt, analyserNode: an } = propsRef.current;
     if (w <= 0 || h <= 0) return;
 
     const barWidth = Math.max(1, (w - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
     const maxBarHeight = h - 4;
-    const bars = nt
-      ? generateNoiseSpectrum(nt, a, seed)
-      : generateSpectrumData(f, a, seed);
+    let bars: number[];
+    if (an) {
+      bars = generateAnalyserSpectrum(an);
+    } else if (nt) {
+      bars = generateNoiseSpectrum(nt, a, seed);
+    } else {
+      bars = generateSpectrumData(f, a, seed);
+    }
 
     for (let i = 0; i < BAR_COUNT; i++) {
       const ref = barRefs.current[i];

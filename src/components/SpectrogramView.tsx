@@ -11,6 +11,7 @@ interface SpectrogramViewProps {
   height: number;
   isPlaying?: boolean;
   noiseType?: NoiseType | null;
+  analyserNode?: AnalyserNode | null;
   style?: ViewStyle;
 }
 
@@ -111,6 +112,24 @@ function generateSpectrumRow(
   return bins;
 }
 
+/** Generate a spectrogram row from real analyser frequency data */
+function generateAnalyserRow(analyser: AnalyserNode): number[] {
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const bins: number[] = [];
+  const binCount = freqData.length;
+  const binsPerSlot = Math.floor(binCount / FREQ_BINS);
+  for (let i = 0; i < FREQ_BINS; i++) {
+    let sum = 0;
+    const start = i * binsPerSlot;
+    for (let j = start; j < start + binsPerSlot && j < binCount; j++) {
+      sum += freqData[j];
+    }
+    bins.push((sum / binsPerSlot) / 255);
+  }
+  return bins;
+}
+
 export default function SpectrogramView({
   frequency,
   amplitude,
@@ -118,6 +137,7 @@ export default function SpectrogramView({
   height,
   isPlaying = false,
   noiseType = null,
+  analyserNode = null,
   style,
 }: SpectrogramViewProps) {
   // Grid of rect refs: [row][col]
@@ -130,8 +150,8 @@ export default function SpectrogramView({
   const bufferRef = useRef<number[][]>([]);
   const headRef = useRef(0); // points to the oldest row (next to overwrite)
 
-  const propsRef = useRef({ frequency, amplitude, width, height, noiseType });
-  propsRef.current = { frequency, amplitude, width, height, noiseType };
+  const propsRef = useRef({ frequency, amplitude, width, height, noiseType, analyserNode });
+  propsRef.current = { frequency, amplitude, width, height, noiseType, analyserNode };
 
   // Initialize buffer
   if (bufferRef.current.length === 0) {
@@ -190,11 +210,13 @@ export default function SpectrogramView({
         if (seedRef.current > 1000) seedRef.current -= 1000;
 
         accumRef.current += dt * scrollRate;
-        const { frequency: f, amplitude: a, noiseType: nt } = propsRef.current;
+        const { frequency: f, amplitude: a, noiseType: nt, analyserNode: an } = propsRef.current;
 
         while (accumRef.current >= 1) {
           accumRef.current -= 1;
-          const row = generateSpectrumRow(f, a, seedRef.current + accumRef.current * 0.5, nt);
+          const row = an
+            ? generateAnalyserRow(an)
+            : generateSpectrumRow(f, a, seedRef.current + accumRef.current * 0.5, nt);
           pushRow(row);
         }
         renderBuffer();

@@ -13,6 +13,7 @@ interface WaveformViewProps {
   height: number;
   isPlaying?: boolean;
   noiseType?: NoiseType | null;
+  analyserNode?: AnalyserNode | null;
   style?: ViewStyle;
 }
 
@@ -102,6 +103,31 @@ function generateNoisePath(
   return parts.join(' ');
 }
 
+/** Generate SVG path from real analyser time-domain data */
+function generateAnalyserPath(
+  analyser: AnalyserNode,
+  width: number,
+  height: number,
+): string {
+  const bufLen = analyser.fftSize;
+  const data = new Uint8Array(bufLen);
+  analyser.getByteTimeDomainData(data);
+
+  const mid = height / 2;
+  const points = Math.min(bufLen, Math.max(200, Math.round(width)));
+  const parts: string[] = [];
+  const step = bufLen / points;
+
+  for (let i = 0; i < points; i++) {
+    const x = (i / points) * width;
+    const idx = Math.floor(i * step);
+    // data[idx] is 0–255 with 128 as center
+    const y = mid - ((data[idx] - 128) / 128) * (height / 2 - 4);
+    parts.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  return parts.join(' ');
+}
+
 function generateFillPath(
   waveform: string,
   frequency: number,
@@ -122,6 +148,7 @@ export default function WaveformView({
   height,
   isPlaying = false,
   noiseType = null,
+  analyserNode = null,
   style,
 }: WaveformViewProps) {
   const linePathRef = useRef<Path | null>(null);
@@ -131,16 +158,21 @@ export default function WaveformView({
   const lastTimeRef = useRef<number | null>(null);
 
   // Refs for latest props so the animation loop always reads current values
-  const propsRef = useRef({ waveform, frequency, amplitude, width, height, noiseType });
-  propsRef.current = { waveform, frequency, amplitude, width, height, noiseType };
+  const propsRef = useRef({ waveform, frequency, amplitude, width, height, noiseType, analyserNode });
+  propsRef.current = { waveform, frequency, amplitude, width, height, noiseType, analyserNode };
 
   const updatePaths = useCallback((phase: number) => {
-    const { waveform: w, frequency: f, amplitude: a, width: cw, height: ch, noiseType: nt } = propsRef.current;
+    const { waveform: w, frequency: f, amplitude: a, width: cw, height: ch, noiseType: nt, analyserNode: an } = propsRef.current;
     if (cw <= 0 || ch <= 0) return;
 
-    const line = nt
-      ? generateNoisePath(nt, a, cw, ch, phase)
-      : generateWaveformPath(w, f, a, cw, ch, phase);
+    let line: string;
+    if (an) {
+      line = generateAnalyserPath(an, cw, ch);
+    } else if (nt) {
+      line = generateNoisePath(nt, a, cw, ch, phase);
+    } else {
+      line = generateWaveformPath(w, f, a, cw, ch, phase);
+    }
     const fill = `${line} L${cw},${ch} L0,${ch} Z`;
 
     linePathRef.current?.setNativeProps({ d: line });
