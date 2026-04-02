@@ -29,6 +29,7 @@ import ControlDrawer from '@/src/components/ControlDrawer';
 import SnapshotButton from '@/src/components/SnapshotButton';
 import { useSnapshotStore } from '@/src/state/useSnapshotStore';
 import { useFrequencyDiscovery } from '@/src/hooks/useFrequencyDiscovery';
+import { useDiscoveryToastStore } from '@/src/state/useDiscoveryToastStore';
 import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 import type { NoiseType, SourceMode, WaveformType, FrequencyScale, RoomPreset } from '@/src/audio';
 import { SympatheticStringsEngine, ROOM_PRESETS, ROOM_LABELS, IntervalExplorerEngine, INTERVALS, detectInterval, MicrophoneEngine, freqToNote, GenerativeDriftEngine, ToneBlendingEngine, BLEND_PRESETS, BLEND_WAVEFORMS, BLEND_WAVEFORM_LABELS } from '@/src/audio';
@@ -168,7 +169,8 @@ export default function ExploreScreen() {
   const [showSaveModal, setShowSaveModal] = useState(false);
 
   // ── Frequency discovery ────────────────────────────────────
-  useFrequencyDiscovery({ frequency, isPlaying, source: 'explore' });
+  const showDiscoveryToast = useDiscoveryToastStore((s) => s.show);
+  useFrequencyDiscovery({ frequency, isPlaying, source: 'explore', onDiscovery: showDiscoveryToast });
 
   // ── Layout: single-page, no-scroll ─────────────────────────────────
   const [activeViz, setActiveViz] = useState<ActiveViz>('waveform');

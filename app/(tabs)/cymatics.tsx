@@ -20,6 +20,7 @@ import RotaryDial from '@/src/components/RotaryDial';
 import ControlDrawer from '@/src/components/ControlDrawer';
 import SnapshotButton from '@/src/components/SnapshotButton';
 import { useFrequencyDiscovery } from '@/src/hooks/useFrequencyDiscovery';
+import { useDiscoveryToastStore } from '@/src/state/useDiscoveryToastStore';
 import type { QuickPreset } from '@/src/components';
 import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
@@ -120,7 +121,8 @@ export default function CymaticsScreen() {
   } = useAudioStore();
 
   // ── Frequency discovery ────────────────────────────────────
-  useFrequencyDiscovery({ frequency, isPlaying, source: 'cymatics' });
+  const showDiscoveryToast = useDiscoveryToastStore((s) => s.show);
+  useFrequencyDiscovery({ frequency, isPlaying, source: 'cymatics', onDiscovery: showDiscoveryToast });
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const plateSize = Math.min(screenWidth - spacing.md * 4, screenHeight * 0.4);

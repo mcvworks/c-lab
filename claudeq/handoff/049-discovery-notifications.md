@@ -1,0 +1,23 @@
+# Handoff
+- Task: 049 — Discovery Notifications
+- Status: done
+- Summary: Added a slide-in toast notification that appears when the user discovers a new cataloged frequency. The toast shows the category icon, frequency name, and Hz value with a subtle accent glow pulse animation. It auto-dismisses after 3 seconds and is tappable to navigate to the Library tab. Works on Explore, Cymatics, and Composer tabs.
+- Files Changed:
+  - `src/state/useDiscoveryToastStore.ts` — new Zustand store managing toast entry state (show/dismiss)
+  - `src/components/DiscoveryToast.tsx` — new toast component with slide-in animation, glow pulse, auto-dismiss, and tap-to-navigate
+  - `app/_layout.tsx` — mounted DiscoveryToast globally above all screens
+  - `app/(tabs)/explore.tsx` — wired onDiscovery callback to show toast
+  - `app/(tabs)/cymatics.tsx` — wired onDiscovery callback to show toast
+  - `app/(tabs)/composer.tsx` — wired onDiscovery callback to show toast
+- Commands Run:
+  - `npx tsc --noEmit` — clean compile
+- Testing:
+  - Open Explore tab → set frequency near a catalog entry (e.g. 432 Hz) → play for 1.5s → toast slides in from top
+  - Toast shows category icon, "Frequency Discovered!", name and Hz
+  - Toast auto-dismisses after 3 seconds
+  - Tap toast → navigates to Library tab
+  - Repeat on Cymatics and Composer tabs
+  - Already-discovered frequencies do not trigger toast
+- Blockers: none
+- Next Recommended Task: 050 (if exists)
+- Notes: Uses the existing `onDiscovery` callback in `useFrequencyDiscovery` hook which was already designed for this but not wired up. Toast store is minimal — just holds the current entry.

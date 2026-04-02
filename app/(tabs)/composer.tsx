@@ -28,6 +28,7 @@ import ControlDrawer from '@/src/components/ControlDrawer';
 import SnapshotButton from '@/src/components/SnapshotButton';
 import { useSnapshotStore } from '@/src/state/useSnapshotStore';
 import { useFrequencyDiscovery } from '@/src/hooks/useFrequencyDiscovery';
+import { useDiscoveryToastStore } from '@/src/state/useDiscoveryToastStore';
 import { colors, useColors, spacing, typography, radius } from '@/src/theme';
 
 // ── Entrainment mode options ──────────────────────────────────────
@@ -206,7 +207,8 @@ export default function ComposerScreen() {
 
   // Binaural state
   const [baseFrequency, setBaseFrequency] = useState(200);
-  useFrequencyDiscovery({ frequency: baseFrequency, isPlaying, source: 'composer' });
+  const showDiscoveryToast = useDiscoveryToastStore((s) => s.show);
+  useFrequencyDiscovery({ frequency: baseFrequency, isPlaying, source: 'composer', onDiscovery: showDiscoveryToast });
   const [beatDifference, setBeatDifference] = useState(10);
   const [binauralVolume, setBinauralVolume] = useState(0.5);
   const [carrierWaveform, setCarrierWaveform] = useState<CarrierWaveform>('sine');

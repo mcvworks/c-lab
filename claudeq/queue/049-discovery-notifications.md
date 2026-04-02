@@ -1,7 +1,7 @@
 ---
 task_id: "049"
 title: Discovery notifications
-status: queued
+status: done
 priority: 0
 requires_approval: false
 ---
@@ -18,8 +18,8 @@ Show a toast/banner when the user discovers a new frequency.
 - Works on any tab where discovery can happen
 
 ## Acceptance Criteria
-- [ ] Toast appears on new discovery
-- [ ] Shows name, frequency, category
-- [ ] Auto-dismisses after 3s
-- [ ] Tap navigates to Library
-- [ ] Animation is subtle and premium
+- [x] Toast appears on new discovery
+- [x] Shows name, frequency, category
+- [x] Auto-dismisses after 3s
+- [x] Tap navigates to Library
+- [x] Animation is subtle and premium
